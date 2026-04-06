@@ -4,13 +4,13 @@ import bcrypt from "bcryptjs";
 import { db, merchantsTable } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { signToken } from "../lib/jwt.js";
-import { requireAuth, hashApiKey } from "../middleware/api-key.js";
+import { requireSessionAuth, hashApiKey } from "../middleware/api-key.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
 function generateApiKey(): string {
-  return `ow_live_${randomBytes(24).toString("hex")}`;
+  return `ow_live_${randomBytes(32).toString("hex")}`;
 }
 
 router.post("/auth/signup", async (req: Request, res: Response): Promise<void> => {
@@ -172,7 +172,7 @@ router.post("/auth/login", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get("/auth/me", requireSessionAuth, async (req: Request, res: Response): Promise<void> => {
   const merchant = req.merchant!;
   const rows = await db
     .select({
@@ -201,7 +201,7 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise
   });
 });
 
-router.post("/auth/rotate-key", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.post("/auth/rotate-key", requireSessionAuth, async (req: Request, res: Response): Promise<void> => {
   const merchant = req.merchant!;
 
   try {

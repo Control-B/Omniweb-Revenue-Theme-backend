@@ -76,4 +76,25 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   res.status(401).json({ error: "Unauthorized", message: "Valid Authorization or x-widget-api-key header required" });
 }
 
+/**
+ * Session-only auth: accepts Bearer JWT only, never API keys.
+ * Use for sensitive account-management endpoints where API key possession
+ * must not be sufficient to modify account credentials.
+ */
+export function requireSessionAuth(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers["authorization"];
+
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    const merchant = resolveFromJwt(token);
+    if (merchant) {
+      req.merchant = merchant;
+      next();
+      return;
+    }
+  }
+
+  res.status(401).json({ error: "Unauthorized", message: "Valid session token required" });
+}
+
 export { hashApiKey };
