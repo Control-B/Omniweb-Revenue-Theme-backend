@@ -117,9 +117,7 @@ app.use("/api/voices", requireAuth);
 app.use("/api/voices-status", requireAuth);
 app.use("/api/widget-config", requireAuth);
 app.use("/api/conversations", requireAuth);
-app.use("/api/billing/create-checkout-session", requireAuth);
-app.use("/api/billing/create-portal-session", requireAuth);
-app.use("/api/billing/status", requireAuth);
+// Billing routes use requireSessionAuth within the router itself
 
 app.use("/api", router);
 
