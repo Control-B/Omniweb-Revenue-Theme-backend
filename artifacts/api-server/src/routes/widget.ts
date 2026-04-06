@@ -6,7 +6,7 @@ const router: IRouter = Router();
 
 const widgetPath = path.join(__dirname, "..", "public", "widget.js");
 
-router.get("/widget.js", (_req: Request, res: Response) => {
+const serveWidget = (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "text/javascript; charset=utf-8");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -18,12 +18,20 @@ router.get("/widget.js", (_req: Request, res: Response) => {
   }
 
   res.sendFile(widgetPath);
-});
+};
 
-router.options("/widget.js", (_req: Request, res: Response) => {
+const corsOk = (_req: Request, res: Response): void => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.status(204).end();
-});
+};
+
+/* Direct access: GET /widget.js (port 8080) */
+router.get("/widget.js", serveWidget);
+router.options("/widget.js", corsOk);
+
+/* Proxy access: GET /api/widget.js (Replit dev proxy / production path prefix) */
+router.get("/api/widget.js", serveWidget);
+router.options("/api/widget.js", corsOk);
 
 export default router;

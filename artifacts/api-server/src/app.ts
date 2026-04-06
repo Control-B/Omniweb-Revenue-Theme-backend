@@ -122,9 +122,11 @@ app.use("/api/analytics", requireSessionAuth);
 
 app.use("/api", router);
 
-app.get("/preview", (req: Request, res: Response) => {
+app.get(["/preview", "/api/preview"], (req: Request, res: Response) => {
   const shopId = (req.query.shopId as string | undefined) ?? "demo.myshopify.com";
-  const apiUrl = `${req.protocol}://${req.get("host")}`;
+  const base = `${req.protocol}://${req.get("host")}`;
+  /* When accessed through the /api proxy prefix, include it in widget URLs */
+  const apiUrl = req.path.startsWith("/api/") ? `${base}/api` : base;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!DOCTYPE html>
 <html lang="en">

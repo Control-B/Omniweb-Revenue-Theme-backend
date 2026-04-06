@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omniweb Widget Test Store</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f7f7f7; color: #111; }
+    .header { background: #1a1a2e; color: white; padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header span { font-size: 13px; opacity: 0.6; }
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; padding: 32px; max-width: 1100px; margin: 0 auto; }
+    .product-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .product-img { height: 180px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-size: 48px; }
+    .product-body { padding: 16px; }
+    .product-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+    .product-price { color: #E63946; font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+    .product-desc { font-size: 13px; color: #666; line-height: 1.5; margin-bottom: 12px; }
+    .btn { background: #E63946; color: white; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
+    .hero { text-align: center; padding: 40px 32px 16px; }
+    .hero h2 { font-size: 28px; margin-bottom: 8px; }
+    .hero p { color: #666; font-size: 15px; }
+    .badge { display: inline-block; background: #E63946; color: white; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🛍️ Demo Shopify Store</h1>
+    <span>Powered by Omniweb AI</span>
+  </div>
+  <div class="hero">
+    <h2>Summer Collection 2025</h2>
+    <p>Click the chat button in the bottom-right corner to talk to your AI sales assistant!</p>
+  </div>
+  <div class="product-grid">
+    <div class="product-card">
+      <div class="product-img">👟</div>
+      <div class="product-body">
+        <div class="badge">BESTSELLER</div>
+        <div class="product-title">Air Boost Sneakers</div>
+        <div class="product-price">$129.99</div>
+        <div class="product-desc">Ultra-lightweight running shoes with responsive foam cushioning. Available in 8 colors.</div>
+        <button class="btn">Add to Cart</button>
+      </div>
+    </div>
+    <div class="product-card">
+      <div class="product-img" style="background:linear-gradient(135deg,#f093fb,#f5576c)">👜</div>
+      <div class="product-body">
+        <div class="badge">NEW</div>
+        <div class="product-title">Leather Tote Bag</div>
+        <div class="product-price">$89.00</div>
+        <div class="product-desc">Genuine leather tote with laptop compartment. Perfect for work and weekend.</div>
+        <button class="btn">Add to Cart</button>
+      </div>
+    </div>
+    <div class="product-card">
+      <div class="product-img" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">⌚</div>
+      <div class="product-body">
+        <div class="product-title">Smart Watch Pro</div>
+        <div class="product-price">$249.99</div>
+        <div class="product-desc">Health tracking, GPS, 7-day battery. Works with iOS and Android.</div>
+        <button class="btn">Add to Cart</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Product context for the AI widget -->
+  <script>
+    window.__owContext = {
+      pageType: 'collection',
+      collectionTitle: 'Summer Collection 2025',
+      products: [
+        { title: 'Air Boost Sneakers', price: '$129.99', available: true },
+        { title: 'Leather Tote Bag', price: '$89.00', available: true },
+        { title: 'Smart Watch Pro', price: '$249.99', available: true }
+      ]
+    };
+  </script>
+
+  <!-- Omniweb AI Widget -->
+  <script
+    src="http://localhost:8080/widget.js"
+    data-api-url="http://localhost:8080"
+    data-shop-id="demo.myshopify.com"
+    defer
+  ></script>
+</body>
+</html>
