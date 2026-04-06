@@ -191,8 +191,14 @@
         "id": "cart_type",
         "label": "Cart type",
         "options": [
-          { "value": "drawer", "label": "Drawer" },
-          { "value": "page", "label": "Page" }
+          {
+            "value": "drawer",
+            "label": "Drawer"
+          },
+          {
+            "value": "page",
+            "label": "Page"
+          }
         ],
         "default": "drawer"
       },
@@ -287,6 +293,38 @@
         "id": "enable_animations",
         "label": "Enable scroll animations",
         "default": true
+      }
+    ]
+  },
+  {
+    "name": "AI Sales Widget",
+    "settings": [
+      {
+        "type": "header",
+        "content": "Omniweb AI Sales Widget"
+      },
+      {
+        "type": "paragraph",
+        "content": "Install the AI chat assistant on your store. Get your API URL and key from your Omniweb dashboard."
+      },
+      {
+        "type": "checkbox",
+        "id": "enable_ai_widget",
+        "label": "Enable AI sales assistant",
+        "default": false
+      },
+      {
+        "type": "text",
+        "id": "widget_api_url",
+        "label": "Widget API URL",
+        "info": "Your Omniweb API server URL, e.g. https://your-api.replit.app",
+        "placeholder": "https://your-api.replit.app"
+      },
+      {
+        "type": "text",
+        "id": "widget_api_key",
+        "label": "Widget API Key",
+        "info": "Your widget API key from the Omniweb dashboard"
       }
     ]
   }

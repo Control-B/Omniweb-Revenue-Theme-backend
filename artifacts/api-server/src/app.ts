@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import router from "./routes/index.js";
+import widgetFileRouter from "./routes/widget.js";
 import { requireApiKey } from "./middleware/api-key.js";
 import { logger } from "./lib/logger.js";
 
@@ -86,8 +87,10 @@ const chatLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
     const body = req.body as { shopId?: string };
-    return body?.shopId ?? req.ip ?? "unknown";
+    if (body?.shopId) return body.shopId;
+    return "unknown";
   },
+  validate: { keyGeneratorIpFallback: false },
   message: { error: "Chat rate limit exceeded", message: "Too many messages. Please wait a moment." },
 });
 
@@ -100,6 +103,8 @@ const voiceLimiter = rateLimit({
 });
 
 app.use(globalLimiter);
+
+app.use(widgetFileRouter);
 
 app.use("/api/chat", chatLimiter, requireApiKey);
 app.use("/api/voice", voiceLimiter, requireApiKey);
