@@ -7,6 +7,27 @@ import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
+/**
+ * Return a trusted base URL for Stripe success/cancel/portal return URLs.
+ *
+ * Priority:
+ *   1. STRIPE_RETURN_URL env var — set this in production to your real domain
+ *   2. REPLIT_DEV_DOMAIN env var — auto-set by Replit for dev environments
+ *   3. Safe fallback pointing at the known dashboard path
+ *
+ * Never uses client-supplied headers (origin/referer) — those are user-
+ * controlled and could enable open-redirect / phishing attacks.
+ */
+function getAppBaseUrl(): string {
+  if (process.env["STRIPE_RETURN_URL"]) {
+    return process.env["STRIPE_RETURN_URL"].replace(/\/$/, "");
+  }
+  if (process.env["REPLIT_DEV_DOMAIN"]) {
+    return `https://${process.env["REPLIT_DEV_DOMAIN"]}/dashboard`;
+  }
+  return "https://localhost/dashboard";
+}
+
 function stripeNotConfigured(res: Response): void {
   res.status(503).json({
     error: "Stripe not configured",
@@ -38,7 +59,7 @@ router.post(
     }
 
     const stripe = getStripe()!;
-    const origin = req.get("origin") ?? req.get("referer") ?? "https://replit.com";
+    const baseUrl = getAppBaseUrl();
 
     try {
       const rows = await db
@@ -56,8 +77,8 @@ router.post(
         customer: existingCustomerId,
         customer_email: existingCustomerId ? undefined : merchant.email,
         metadata: { merchantId: merchant.id, shopId: merchant.shopId, plan },
-        success_url: `${origin}/billing?session_id={CHECKOUT_SESSION_ID}&status=success`,
-        cancel_url: `${origin}/billing?status=canceled`,
+        success_url: `${baseUrl}/billing?session_id={CHECKOUT_SESSION_ID}&status=success`,
+        cancel_url: `${baseUrl}/billing?status=canceled`,
       });
 
       res.json({ url: session.url });
@@ -75,7 +96,7 @@ router.post(
     if (!isStripeConfigured()) { stripeNotConfigured(res); return; }
 
     const merchant = req.merchant!;
-    const origin = req.get("origin") ?? req.get("referer") ?? "https://replit.com";
+    const baseUrl = getAppBaseUrl();
 
     try {
       const rows = await db
@@ -93,7 +114,7 @@ router.post(
       const stripe = getStripe()!;
       const session = await stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: `${origin}/billing`,
+        return_url: `${baseUrl}/billing`,
       });
 
       res.json({ url: session.url });

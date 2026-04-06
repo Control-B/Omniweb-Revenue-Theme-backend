@@ -1,6 +1,7 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { checkUsage } from "../lib/plan-limits.js";
 import { PLAN_NAMES } from "../lib/stripe.js";
+import { logger } from "../lib/logger.js";
 
 /**
  * Middleware enforcing active subscriptions and monthly message limits on
@@ -69,9 +70,16 @@ export async function requirePlanLimits(
       });
       return;
     }
-  } catch {
-    // Non-fatal: transient DB failure — let the request through rather than
-    // blocking all widget traffic during an outage.
+  } catch (err) {
+    // Fail closed: if the usage check itself errors (e.g. DB unavailable),
+    // block the request rather than allowing unbounded paid API consumption.
+    logger.error({ err, shopId: (req.body as { shopId?: string })?.shopId }, "Plan limit check failed — failing closed");
+    res.status(503).json({
+      error: "Billing check unavailable",
+      message: "Unable to verify your plan limits right now. Please try again in a moment.",
+      retryable: true,
+    });
+    return;
   }
 
   next();
