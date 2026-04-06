@@ -20,11 +20,6 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ baseURL, apiKey });
 }
 
-/**
- * Format a pageContext object into a clear, structured text block that the AI
- * can use to answer product questions accurately. Returns an empty string if
- * no meaningful context is present.
- */
 function formatPageContext(ctx: Record<string, unknown>): string {
   if (!ctx || typeof ctx !== "object") return "";
 
@@ -66,7 +61,6 @@ function formatPageContext(ctx: Record<string, unknown>): string {
     }
     if (ctx.collectionTitle) lines.push(`Collection: ${ctx.collectionTitle}`);
 
-    /* Related products from the same collection — excludes the product being viewed */
     const collectionProducts = ctx.collectionProducts as Array<Record<string, unknown>> | undefined;
     if (collectionProducts && collectionProducts.length > 0) {
       const related = collectionProducts.filter(
@@ -125,9 +119,6 @@ function formatPageContext(ctx: Record<string, unknown>): string {
     if (ctx.searchResultCount) lines.push(`Results Found: ${ctx.searchResultCount}`);
   }
 
-  /* Prompt budget guard — cap the context block so large product catalogues or long
-     descriptions don't inflate token costs / latency. ~3 000 chars ≈ ~750 tokens,
-     well within context limits but safely bounded. */
   const MAX_CONTEXT_CHARS = 3_000;
   const raw = lines.join("\n");
   return raw.length > MAX_CONTEXT_CHARS
@@ -135,17 +126,6 @@ function formatPageContext(ctx: Record<string, unknown>): string {
     : raw;
 }
 
-/**
- * Build the full system prompt: persona + formatted page context.
- *
- * Implementation note: we extract data from Shopify Liquid globals rendered
- * server-side into window.__owContext, rather than client-side ShopifyAnalytics
- * or JSON-LD. Liquid gives richer, more reliable data (all variants, stock status,
- * collection products) without any extra client-side parsing overhead.
- *
- * This is rebuilt on every request so the AI always sees the current page,
- * even if the shopper navigated within the same chat session.
- */
 function buildSystemPrompt(persona: string, pageContext?: Record<string, unknown>): string {
   if (!pageContext) return persona;
   const contextBlock = formatPageContext(pageContext);
@@ -184,60 +164,59 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
 
   const shop = shopId.slice(0, 200);
 
-  if (!isShopRegistered(shop)) {
-    res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
-    return;
-  }
-  const config = getWidgetConfig(shop);
-  const session = getOrCreateSession(sessionId, shop);
-
-  /* Build system prompt with the latest page context from the current request.
-     Updating on every message (not just the first) ensures the AI gets
-     fresh product/collection data if the shopper navigates between pages. */
-  const systemContent = buildSystemPrompt(config.persona, pageContext || undefined);
-
-  if (session.messages.length === 0) {
-    const systemMsg: Message = { role: "system", content: systemContent };
-    addMessageToSession(sessionId, shop, systemMsg);
-  } else {
-    updateSystemMessage(sessionId, shop, systemContent);
-  }
-
-  const userMsg: Message = { role: "user", content: message.trim() };
-  addMessageToSession(sessionId, shop, userMsg);
-
-  const openai = getOpenAIClient();
-  if (!openai) {
-    res.status(503).json({
-      error: "AI service not configured",
-      message:
-        "OpenAI integration is not set up. AI_INTEGRATIONS_OPENAI_BASE_URL and AI_INTEGRATIONS_OPENAI_API_KEY must be set.",
-    });
-    return;
-  }
-
   try {
+    const registered = await isShopRegistered(shop);
+    if (!registered) {
+      res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
+      return;
+    }
+
+    const config = await getWidgetConfig(shop);
+    const session = await getOrCreateSession(sessionId, shop);
+
+    const systemContent = buildSystemPrompt(config.persona, pageContext || undefined);
+
+    if (session.messages.length === 0) {
+      const systemMsg: Message = { role: "system", content: systemContent };
+      await addMessageToSession(sessionId, shop, systemMsg);
+    } else {
+      await updateSystemMessage(sessionId, shop, systemContent);
+    }
+
+    const userMsg: Message = { role: "user", content: message.trim() };
+    await addMessageToSession(sessionId, shop, userMsg);
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      res.status(503).json({
+        error: "AI service not configured",
+        message: "OpenAI integration is not set up.",
+      });
+      return;
+    }
+
+    const updatedSession = await getOrCreateSession(sessionId, shop);
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: session.messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: updatedSession.messages.map((m) => ({ role: m.role, content: m.content })),
       max_tokens: 512,
     });
 
     const reply =
       completion.choices[0]?.message?.content ?? "Sorry, I couldn't generate a reply.";
     const assistantMsg: Message = { role: "assistant", content: reply };
-    addMessageToSession(sessionId, shop, assistantMsg);
+    await addMessageToSession(sessionId, shop, assistantMsg);
 
     res.json({
       reply,
       sessionId,
-      messageCount: session.messageCount,
+      messageCount: updatedSession.messageCount + 1,
     });
   } catch (err) {
-    logger.error({ err }, "OpenAI chat error");
+    logger.error({ err }, "Chat error");
     res.status(502).json({
-      error: "AI service unavailable",
-      message: "Unable to get a response. Please try again.",
+      error: "Service unavailable",
+      message: "Unable to process your message. Please try again.",
     });
   }
 });

@@ -20,7 +20,13 @@ router.post("/voice", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  if (!shopId || typeof shopId !== "string" || !isShopRegistered(shopId.slice(0, 200))) {
+  if (!shopId || typeof shopId !== "string") {
+    res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
+    return;
+  }
+
+  const registered = await isShopRegistered(shopId.slice(0, 200));
+  if (!registered) {
     res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
     return;
   }

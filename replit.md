@@ -28,8 +28,8 @@ The API server (`artifacts/api-server/`) is extended with these endpoints:
 | `GET /api/conversations/:shopId` | Recent chat sessions |
 
 **Key files:**
-- `artifacts/api-server/src/lib/session-store.ts` — in-memory conversation history (supports context updates mid-session)
-- `artifacts/api-server/src/lib/widget-config-store.ts` — per-shop widget config (default + overrides)
+- `artifacts/api-server/src/lib/session-store.ts` — DB-backed conversation history (async, PostgreSQL via Drizzle)
+- `artifacts/api-server/src/lib/widget-config-store.ts` — DB-backed per-shop widget config (async upsert, auto-seeds demo shop)
 - `artifacts/api-server/src/middleware/api-key.ts` — API key validation middleware
 - `artifacts/api-server/src/routes/chat.ts` — OpenAI chat endpoint with `buildSystemPrompt` + `formatPageContext`
 - `artifacts/api-server/src/routes/voice.ts` — ElevenLabs voice endpoint (stub if no key)

@@ -11,32 +11,41 @@ const router: IRouter = Router();
 
 router.get(
   "/widget/:shopId/config",
-  (req: Request<{ shopId: string }>, res: Response): void => {
+  async (req: Request<{ shopId: string }>, res: Response): Promise<void> => {
     const shopId = req.params.shopId;
     if (!shopId || typeof shopId !== "string") {
       res.status(400).json({ error: "shopId is required" });
       return;
     }
-    res.json(getPublicWidgetConfig(shopId));
+    try {
+      const config = await getPublicWidgetConfig(shopId);
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch widget config" });
+    }
   }
 );
 
 router.get(
   "/widget-config/:shopId",
-  (req: Request<{ shopId: string }>, res: Response): void => {
+  async (req: Request<{ shopId: string }>, res: Response): Promise<void> => {
     const shopId = req.params.shopId;
     if (!shopId || typeof shopId !== "string") {
       res.status(400).json({ error: "shopId is required" });
       return;
     }
-    const config = getWidgetConfig(shopId);
-    res.json(config);
+    try {
+      const config = await getWidgetConfig(shopId);
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch widget config" });
+    }
   }
 );
 
 router.put(
   "/widget-config/:shopId",
-  (req: Request<{ shopId: string }>, res: Response): void => {
+  async (req: Request<{ shopId: string }>, res: Response): Promise<void> => {
     const shopId = req.params.shopId;
     if (!shopId || typeof shopId !== "string") {
       res.status(400).json({ error: "shopId is required" });
@@ -60,11 +69,15 @@ router.put(
       }
     }
 
-    const updated = updateWidgetConfig(
-      shopId,
-      updates as Parameters<typeof updateWidgetConfig>[1]
-    );
-    res.json(updated);
+    try {
+      const updated = await updateWidgetConfig(
+        shopId,
+        updates as Parameters<typeof updateWidgetConfig>[1]
+      );
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update widget config" });
+    }
   }
 );
 
@@ -74,15 +87,19 @@ router.get("/voices", (_req: Request, res: Response): void => {
 
 router.get(
   "/conversations/:shopId",
-  (req: Request<{ shopId: string }>, res: Response): void => {
+  async (req: Request<{ shopId: string }>, res: Response): Promise<void> => {
     const shopId = req.params.shopId;
     if (!shopId || typeof shopId !== "string") {
       res.status(400).json({ error: "shopId is required" });
       return;
     }
-    const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
-    const sessions = getRecentSessions(shopId, limit);
-    res.json({ sessions, total: sessions.length });
+    try {
+      const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
+      const sessions = await getRecentSessions(shopId, limit);
+      res.json({ sessions, total: sessions.length });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
   }
 );
 

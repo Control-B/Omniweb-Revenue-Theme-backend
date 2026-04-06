@@ -1,3 +1,6 @@
+import { db, widgetConfigsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+
 export interface WidgetConfig {
   shopId: string;
   greeting: string;
@@ -7,6 +10,16 @@ export interface WidgetConfig {
   position: "bottom-right" | "bottom-left";
   widgetTitle: string;
   enabled: boolean;
+}
+
+export interface PublicWidgetConfig {
+  shopId: string;
+  widgetTitle: string;
+  greeting: string;
+  accentColor: string;
+  position: "bottom-right" | "bottom-left";
+  enabled: boolean;
+  voiceId: string;
 }
 
 const DEFAULT_CONFIG: Omit<WidgetConfig, "shopId"> = {
@@ -20,44 +33,101 @@ const DEFAULT_CONFIG: Omit<WidgetConfig, "shopId"> = {
   enabled: true,
 };
 
-const configs = new Map<string, WidgetConfig>();
-const registeredShops = new Set<string>(["demo.myshopify.com"]);
+const DEMO_SHOP_ID = "demo.myshopify.com";
 
-export function isShopRegistered(shopId: string): boolean {
-  return registeredShops.has(shopId);
+function rowToConfig(row: typeof widgetConfigsTable.$inferSelect): WidgetConfig {
+  return {
+    shopId: row.shopId,
+    greeting: row.greeting,
+    persona: row.persona,
+    voiceId: row.voiceId,
+    accentColor: row.accentColor,
+    position: row.position,
+    widgetTitle: row.widgetTitle,
+    enabled: row.enabled,
+  };
 }
 
-export function getWidgetConfig(shopId: string): WidgetConfig {
-  if (!configs.has(shopId)) {
-    configs.set(shopId, { shopId, ...DEFAULT_CONFIG });
+export async function isShopRegistered(shopId: string): Promise<boolean> {
+  const rows = await db
+    .select({ shopId: widgetConfigsTable.shopId, registeredAt: widgetConfigsTable.registeredAt })
+    .from(widgetConfigsTable)
+    .where(eq(widgetConfigsTable.shopId, shopId))
+    .limit(1);
+  return rows.length > 0 && rows[0].registeredAt !== null;
+}
+
+export async function getWidgetConfig(shopId: string): Promise<WidgetConfig> {
+  const rows = await db
+    .select()
+    .from(widgetConfigsTable)
+    .where(eq(widgetConfigsTable.shopId, shopId))
+    .limit(1);
+
+  if (rows.length > 0) {
+    return rowToConfig(rows[0]);
   }
-  return configs.get(shopId)!;
+
+  const isDemoShop = shopId === DEMO_SHOP_ID;
+  await db.insert(widgetConfigsTable).values({
+    shopId,
+    ...DEFAULT_CONFIG,
+    registeredAt: isDemoShop ? new Date() : null,
+  });
+
+  return { shopId, ...DEFAULT_CONFIG };
 }
 
-export function updateWidgetConfig(
+export async function updateWidgetConfig(
   shopId: string,
   updates: Partial<Omit<WidgetConfig, "shopId">>
-): WidgetConfig {
-  const existing = getWidgetConfig(shopId);
-  const updated = { ...existing, ...updates, shopId };
-  configs.set(shopId, updated);
-  registeredShops.add(shopId);
-  return updated;
+): Promise<WidgetConfig> {
+  const existing = await getWidgetConfig(shopId);
+  const merged = { ...existing, ...updates };
+
+  await db
+    .insert(widgetConfigsTable)
+    .values({
+      shopId,
+      greeting: merged.greeting,
+      persona: merged.persona,
+      voiceId: merged.voiceId,
+      accentColor: merged.accentColor,
+      position: merged.position,
+      widgetTitle: merged.widgetTitle,
+      enabled: merged.enabled,
+      registeredAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: widgetConfigsTable.shopId,
+      set: {
+        greeting: merged.greeting,
+        persona: merged.persona,
+        voiceId: merged.voiceId,
+        accentColor: merged.accentColor,
+        position: merged.position,
+        widgetTitle: merged.widgetTitle,
+        enabled: merged.enabled,
+        registeredAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+  return merged;
 }
 
-export interface PublicWidgetConfig {
-  shopId: string;
-  widgetTitle: string;
-  greeting: string;
-  accentColor: string;
-  position: "bottom-right" | "bottom-left";
-  enabled: boolean;
-  voiceId: string;
-}
-
-export function getPublicWidgetConfig(shopId: string): PublicWidgetConfig {
-  const { shopId: sid, widgetTitle, greeting, accentColor, position, enabled, voiceId } = getWidgetConfig(shopId);
-  return { shopId: sid, widgetTitle, greeting, accentColor, position, enabled, voiceId };
+export async function getPublicWidgetConfig(shopId: string): Promise<PublicWidgetConfig> {
+  const config = await getWidgetConfig(shopId);
+  return {
+    shopId: config.shopId,
+    widgetTitle: config.widgetTitle,
+    greeting: config.greeting,
+    accentColor: config.accentColor,
+    position: config.position,
+    enabled: config.enabled,
+    voiceId: config.voiceId,
+  };
 }
 
 export function getAvailableVoices(): Array<{ id: string; name: string; description: string }> {
