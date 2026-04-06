@@ -1,4 +1,5 @@
 import { pgTable, text, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { widgetConfigsTable } from "./widget_configs";
 
 export interface StoredMessage {
   role: "system" | "user" | "assistant";
@@ -8,7 +9,9 @@ export interface StoredMessage {
 export const chatSessionsTable = pgTable("chat_sessions", {
   sessionKey: text("session_key").primaryKey(),
   sessionId: text("session_id").notNull(),
-  shopId: text("shop_id").notNull(),
+  shopId: text("shop_id")
+    .notNull()
+    .references(() => widgetConfigsTable.shopId, { onDelete: "cascade" }),
   messages: jsonb("messages").notNull().$type<StoredMessage[]>().default([]),
   messageCount: integer("message_count").notNull().default(0),
   firstMessage: text("first_message").notNull().default(""),

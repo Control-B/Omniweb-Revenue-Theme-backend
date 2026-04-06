@@ -9,8 +9,6 @@ export const merchantsTable = pgTable("merchants", {
   passwordHash: text("password_hash"),
   apiKeyHash: text("api_key_hash"),
   plan: planEnum("plan").notNull().default("free"),
-  stripeCustomerId: text("stripe_customer_id"),
-  stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

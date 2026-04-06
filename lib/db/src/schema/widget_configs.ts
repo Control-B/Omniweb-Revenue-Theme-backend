@@ -1,9 +1,12 @@
 import { pgTable, text, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { merchantsTable } from "./merchants";
 
 export const positionEnum = pgEnum("widget_position", ["bottom-right", "bottom-left"]);
 
 export const widgetConfigsTable = pgTable("widget_configs", {
-  shopId: text("shop_id").primaryKey(),
+  shopId: text("shop_id")
+    .primaryKey()
+    .references(() => merchantsTable.shopId, { onDelete: "cascade" }),
   widgetTitle: text("widget_title").notNull().default("Sales Assistant"),
   greeting: text("greeting").notNull().default("Hi! 👋 I'm your AI sales assistant. How can I help you today?"),
   persona: text("persona").notNull().default(
