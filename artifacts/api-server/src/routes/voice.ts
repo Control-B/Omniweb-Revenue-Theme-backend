@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getAvailableVoices, isShopRegistered } from "../lib/widget-config-store.js";
+import { incrementUsage } from "../lib/plan-limits.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -74,6 +75,11 @@ router.post("/voice", async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+
+    // Count this as a consumed message once ElevenLabs confirms success
+    await incrementUsage(shopId.slice(0, 200)).catch((err) => {
+      logger.warn({ err }, "Failed to increment usage counter on voice — non-fatal");
+    });
 
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Transfer-Encoding", "chunked");

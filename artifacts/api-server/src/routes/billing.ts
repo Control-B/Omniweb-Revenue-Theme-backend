@@ -158,19 +158,27 @@ router.post(
 
     const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
     if (!webhookSecret) {
-      logger.warn("STRIPE_WEBHOOK_SECRET not set — accepting webhook without signature verification (dev only)");
+      logger.error("STRIPE_WEBHOOK_SECRET is not set — webhook rejected (fail closed)");
+      res.status(400).json({
+        error: "Webhook misconfigured",
+        message: "STRIPE_WEBHOOK_SECRET must be set to receive webhook events.",
+      });
+      return;
     }
 
     const stripe = getStripe()!;
     const sig = req.headers["stripe-signature"] as string | undefined;
+
+    if (!sig) {
+      logger.warn("Stripe webhook received without stripe-signature header — rejected");
+      res.status(400).json({ error: "Missing stripe-signature header" });
+      return;
+    }
+
     let event;
 
     try {
-      if (webhookSecret && sig) {
-        event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-      } else {
-        event = JSON.parse((req.body as Buffer).toString()) as { type: string; data: { object: Record<string, unknown> } };
-      }
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
     } catch (err) {
       logger.warn({ err }, "Stripe webhook signature verification failed");
       res.status(400).json({ error: "Invalid webhook signature" });
@@ -212,6 +220,42 @@ async function handleStripeEvent(event: { type: string; data: { object: Record<s
         .where(eq(merchantsTable.id, merchantId));
 
       logger.info({ merchantId, plan }, "Checkout completed — plan activated");
+      break;
+    }
+
+    case "customer.subscription.created": {
+      const sub = obj as {
+        id: string;
+        status: string;
+        current_period_end: number;
+        customer: string;
+        items?: { data?: Array<{ price?: { id: string } }> };
+      };
+      const customerId = sub.customer;
+
+      const rows = await db
+        .select({ id: merchantsTable.id })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.stripeCustomerId, customerId))
+        .limit(1);
+
+      if (rows.length === 0) break;
+      const merchantId = rows[0].id;
+
+      const plan = getPlanFromPriceId(sub.items?.data?.[0]?.price?.id);
+
+      await db
+        .update(merchantsTable)
+        .set({
+          plan: plan as "free" | "starter" | "pro",
+          subscriptionStatus: mapStripeStatus(sub.status),
+          stripeSubscriptionId: sub.id,
+          currentPeriodEnd: new Date(sub.current_period_end * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(merchantsTable.id, merchantId));
+
+      logger.info({ merchantId, plan, status: sub.status }, "Subscription created");
       break;
     }
 

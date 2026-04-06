@@ -107,7 +107,7 @@ app.use(globalLimiter);
 
 /* Public widget endpoints — rate limited, no auth required */
 app.use("/api/chat", chatLimiter, requirePlanLimits);
-app.use("/api/voice", voiceLimiter);
+app.use("/api/voice", voiceLimiter, requirePlanLimits);
 
 /* Auth endpoints — rate limited, no auth required */
 app.use("/api/auth", authLimiter);
