@@ -10,9 +10,12 @@ import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
-function getOpenAIClient(): OpenAI {
+function getOpenAIClient(): OpenAI | null {
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "placeholder";
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!baseURL || !apiKey) {
+    return null;
+  }
   return new OpenAI({ baseURL, apiKey });
 }
 
@@ -32,8 +35,12 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "message is required" });
     return;
   }
+  if (!shopId || typeof shopId !== "string") {
+    res.status(400).json({ error: "shopId is required" });
+    return;
+  }
 
-  const shop = (shopId ?? "default").slice(0, 100);
+  const shop = shopId.slice(0, 200);
   const config = getWidgetConfig(shop);
   const session = getOrCreateSession(sessionId, shop);
 
@@ -50,6 +57,14 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
   addMessageToSession(sessionId, shop, userMsg);
 
   const openai = getOpenAIClient();
+  if (!openai) {
+    res.status(503).json({
+      error: "AI service not configured",
+      message:
+        "OpenAI integration is not set up. AI_INTEGRATIONS_OPENAI_BASE_URL and AI_INTEGRATIONS_OPENAI_API_KEY must be set.",
+    });
+    return;
+  }
 
   try {
     const completion = await openai.chat.completions.create({
