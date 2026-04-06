@@ -45,14 +45,14 @@ export interface BillingStatus {
   subscriptionStatus: string;
   isSubscriptionActive: boolean;
   currentPeriodEnd: string | null;
-  hasCustomer: boolean;
+  hasShopifyToken: boolean;
+  shopifyConfigured: boolean;
   usage: {
     used: number;
     limit: number;
     remaining: number;
     percentage: number;
   };
-  stripeConfigured: boolean;
 }
 
 export interface AnalyticsSummary {
@@ -164,10 +164,10 @@ export function useBillingStatus() {
   });
 }
 
-export function useCreateCheckoutSession() {
+export function useCreateSubscription() {
   return useMutation({
     mutationFn: (plan: string) =>
-      apiFetch("/api/billing/create-checkout-session", {
+      apiFetch("/api/billing/create-subscription", {
         method: "POST",
         body: JSON.stringify({ plan }),
       }) as Promise<{ url: string }>,
@@ -179,17 +179,12 @@ export function useCreateCheckoutSession() {
   });
 }
 
-export function useCreatePortalSession() {
+export function useCancelSubscription() {
   return useMutation({
     mutationFn: () =>
-      apiFetch("/api/billing/create-portal-session", {
+      apiFetch("/api/billing/cancel-subscription", {
         method: "POST",
-      }) as Promise<{ url: string }>,
-    onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    },
+      }) as Promise<{ success: boolean }>,
   });
 }
 

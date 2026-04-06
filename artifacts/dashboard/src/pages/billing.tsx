@@ -1,6 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useBillingStatus, useCreateCheckoutSession, useCreatePortalSession } from "@/hooks/use-api";
+import {
+  useBillingStatus,
+  useCreateSubscription,
+  useCancelSubscription,
+} from "@/hooks/use-api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +16,16 @@ import {
   ArrowUpRight,
   CheckCircle2,
   AlertTriangle,
-  ExternalLink,
   Zap,
+  Link2,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_LABELS: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
   active: { label: "Active", variant: "default" },
   trialing: { label: "Trial", variant: "secondary" },
   past_due: { label: "Past Due", variant: "destructive" },
@@ -26,11 +34,18 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
   incomplete: { label: "Incomplete", variant: "destructive" },
 };
 
+const PLAN_PRICES: Record<string, string> = {
+  free: "$0/mo",
+  starter: "$29/mo",
+  pro: "$99/mo",
+};
+
 export default function Billing() {
   const { data: billing, isLoading, refetch } = useBillingStatus();
-  const checkout = useCreateCheckoutSession();
-  const portal = useCreatePortalSession();
+  const subscribe = useCreateSubscription();
+  const cancel = useCancelSubscription();
   const [location] = useLocation();
+  const [cancelConfirm, setCancelConfirm] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -42,20 +57,30 @@ export default function Billing() {
       void refetch();
       window.history.replaceState({}, "", location);
     } else if (status === "canceled") {
-      toast.info("Checkout canceled", { description: "No changes were made to your subscription." });
+      toast.info("Checkout canceled", {
+        description: "No changes were made to your subscription.",
+      });
       window.history.replaceState({}, "", location);
     }
   }, [location, refetch]);
 
   const handleUpgrade = async (plan: string) => {
-    if (!billing?.stripeConfigured) {
-      toast.error("Stripe not configured", {
-        description: "The Stripe API key is not set up. Contact support to enable billing.",
+    if (!billing?.shopifyConfigured) {
+      toast.error("Shopify app not configured", {
+        description:
+          "Set SHOPIFY_API_KEY and SHOPIFY_API_SECRET to enable billing.",
+      });
+      return;
+    }
+    if (!billing.hasShopifyToken) {
+      toast.error("Store not connected", {
+        description:
+          "Install the app from the Shopify App Store to enable billing.",
       });
       return;
     }
     try {
-      await checkout.mutateAsync(plan);
+      await subscribe.mutateAsync(plan);
     } catch (err) {
       toast.error("Checkout failed", {
         description: err instanceof Error ? err.message : "Please try again.",
@@ -63,13 +88,23 @@ export default function Billing() {
     }
   };
 
-  const handlePortal = async () => {
+  const handleCancel = async () => {
+    if (!cancelConfirm) {
+      setCancelConfirm(true);
+      return;
+    }
     try {
-      await portal.mutateAsync();
+      await cancel.mutateAsync();
+      toast.success("Subscription canceled", {
+        description: "You've been downgraded to the Free plan.",
+      });
+      setCancelConfirm(false);
+      void refetch();
     } catch (err) {
-      toast.error("Portal failed", {
+      toast.error("Cancellation failed", {
         description: err instanceof Error ? err.message : "Please try again.",
       });
+      setCancelConfirm(false);
     }
   };
 
@@ -82,12 +117,20 @@ export default function Billing() {
   }
 
   if (!billing) {
-    return <div className="text-muted-foreground py-12 text-center">Could not load billing information.</div>;
+    return (
+      <div className="text-muted-foreground py-12 text-center">
+        Could not load billing information.
+      </div>
+    );
   }
 
-  const statusInfo = STATUS_LABELS[billing.subscriptionStatus] ?? STATUS_LABELS["none"]!;
+  const statusInfo =
+    STATUS_LABELS[billing.subscriptionStatus] ?? STATUS_LABELS["none"]!;
   const isPastDue = billing.subscriptionStatus === "past_due";
   const isOnPaidPlan = ["starter", "pro"].includes(billing.plan);
+  const isActive = billing.isSubscriptionActive;
+  const canUpgrade = billing.shopifyConfigured && billing.hasShopifyToken;
+
   const renewalDate = billing.currentPeriodEnd
     ? new Date(billing.currentPeriodEnd).toLocaleDateString("en-US", {
         year: "numeric",
@@ -104,33 +147,47 @@ export default function Billing() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
-        <p className="text-muted-foreground mt-1">Manage your plan and usage</p>
+        <p className="text-muted-foreground mt-1">
+          Manage your plan and usage — billed securely through Shopify
+        </p>
       </div>
 
       {isPastDue && (
         <Alert className="border-destructive/50 bg-destructive/10">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertDescription className="text-destructive">
-            Your last payment failed. Please update your payment method to avoid service interruption.
+            Your last payment failed. Please update your payment method in
+            Shopify admin to avoid service interruption.
           </AlertDescription>
         </Alert>
       )}
 
-      {isOnPaidPlan && !billing.isSubscriptionActive && billing.subscriptionStatus !== "past_due" && (
+      {isOnPaidPlan && !isActive && !isPastDue && (
         <Alert className="border-amber-400 bg-amber-50 dark:bg-amber-950/30">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-700 dark:text-amber-300">
-            Your <strong>{billing.planName}</strong> subscription is <strong>{billing.subscriptionStatus}</strong>.
-            The AI widget is operating under the Free plan limits ({billing.usage.limit} messages/month) until you renew.
+            Your <strong>{billing.planName}</strong> subscription is{" "}
+            <strong>{billing.subscriptionStatus}</strong>. The widget is running
+            under Free plan limits ({billing.usage.limit} msg/mo) until you
+            renew.
           </AlertDescription>
         </Alert>
       )}
 
-      {!billing.stripeConfigured && (
-        <Alert className="border-amber-400 bg-amber-50 dark:bg-amber-950/30">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-700 dark:text-amber-300">
-            Stripe is not configured for this deployment. Upgrade buttons are disabled.
+      {!billing.hasShopifyToken && (
+        <Alert className="border-blue-400 bg-blue-50 dark:bg-blue-950/30">
+          <Link2 className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-700 dark:text-blue-300">
+            <strong>Connect your Shopify store</strong> to enable paid plans.
+            Install the app from the{" "}
+            <a
+              href="/dashboard/install"
+              className="underline font-medium hover:no-underline"
+            >
+              install page
+            </a>{" "}
+            and billing will be handled directly through Shopify — no credit
+            card form needed.
           </AlertDescription>
         </Alert>
       )}
@@ -147,74 +204,79 @@ export default function Billing() {
             </div>
             <CardDescription>
               {isOnPaidPlan
-                ? `Your ${billing.planName} subscription`
+                ? `Your ${billing.planName} subscription — billed through Shopify`
                 : "You are on the free plan"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold">{billing.planName}</span>
-              {billing.plan === "starter" && (
-                <span className="text-muted-foreground text-sm">$29 / month</span>
-              )}
-              {billing.plan === "pro" && (
-                <span className="text-muted-foreground text-sm">$99 / month</span>
-              )}
+              <span className="text-muted-foreground text-sm">
+                {PLAN_PRICES[billing.plan] ?? ""}
+              </span>
             </div>
 
-            {renewalDate && (
+            {renewalDate && isActive && (
               <p className="text-sm text-muted-foreground">
                 <CheckCircle2 className="inline h-4 w-4 text-green-500 mr-1" />
                 Renews on {renewalDate}
               </p>
             )}
 
-            <div className="flex gap-2 pt-2">
-              {isOnPaidPlan && billing.hasCustomer ? (
+            <div className="flex flex-wrap gap-2 pt-2">
+              {!isOnPaidPlan && (
                 <Button
-                  variant="outline"
-                  onClick={handlePortal}
-                  disabled={portal.isPending || !billing.stripeConfigured}
-                  data-testid="button-manage-subscription"
+                  onClick={() => handleUpgrade("starter")}
+                  disabled={subscribe.isPending || !canUpgrade}
+                  data-testid="button-upgrade-starter"
                 >
-                  {portal.isPending ? (
+                  {subscribe.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <ExternalLink size={16} className="mr-2" />
+                    <ArrowUpRight size={16} className="mr-2" />
                   )}
-                  Manage Subscription
+                  Upgrade to Starter
                 </Button>
-              ) : (
-                <>
-                  {billing.plan !== "starter" && billing.plan !== "pro" && (
-                    <Button
-                      onClick={() => handleUpgrade("starter")}
-                      disabled={checkout.isPending || !billing.stripeConfigured}
-                      data-testid="button-upgrade-starter"
-                    >
-                      {checkout.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <ArrowUpRight size={16} className="mr-2" />
-                      )}
-                      Upgrade to Starter
-                    </Button>
+              )}
+
+              {billing.plan === "starter" && isActive && (
+                <Button
+                  onClick={() => handleUpgrade("pro")}
+                  disabled={subscribe.isPending || !canUpgrade}
+                  data-testid="button-upgrade-pro"
+                >
+                  {subscribe.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap size={16} className="mr-2" />
                   )}
-                  {billing.plan === "starter" && (
-                    <Button
-                      onClick={() => handleUpgrade("pro")}
-                      disabled={checkout.isPending || !billing.stripeConfigured}
-                      data-testid="button-upgrade-pro"
-                    >
-                      {checkout.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Zap size={16} className="mr-2" />
-                      )}
-                      Upgrade to Pro
-                    </Button>
+                  Upgrade to Pro
+                </Button>
+              )}
+
+              {isOnPaidPlan && isActive && (
+                <Button
+                  variant={cancelConfirm ? "destructive" : "outline"}
+                  onClick={() => void handleCancel()}
+                  disabled={cancel.isPending}
+                  data-testid="button-cancel-subscription"
+                >
+                  {cancel.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle size={16} className="mr-2" />
                   )}
-                </>
+                  {cancelConfirm ? "Confirm Cancel" : "Cancel Plan"}
+                </Button>
+              )}
+              {cancelConfirm && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setCancelConfirm(false)}
+                  className="text-muted-foreground"
+                >
+                  Keep Plan
+                </Button>
               )}
             </div>
           </CardContent>
@@ -233,8 +295,11 @@ export default function Billing() {
           <CardContent className="space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Messages used</span>
-              <span className={`font-medium ${isAtLimit ? "text-destructive" : isNearLimit ? "text-amber-600" : ""}`}>
-                {billing.usage.used.toLocaleString()} / {billing.usage.limit.toLocaleString()}
+              <span
+                className={`font-medium ${isAtLimit ? "text-destructive" : isNearLimit ? "text-amber-600" : ""}`}
+              >
+                {billing.usage.used.toLocaleString()} /{" "}
+                {billing.usage.limit.toLocaleString()}
               </span>
             </div>
             <Progress
@@ -249,10 +314,14 @@ export default function Billing() {
                 </span>
               ) : isNearLimit ? (
                 <span className="text-amber-600">
-                  {billing.usage.remaining.toLocaleString()} messages remaining — consider upgrading
+                  {billing.usage.remaining.toLocaleString()} messages remaining
+                  — consider upgrading
                 </span>
               ) : (
-                <span>{billing.usage.remaining.toLocaleString()} messages remaining this month</span>
+                <span>
+                  {billing.usage.remaining.toLocaleString()} messages remaining
+                  this month
+                </span>
               )}
             </div>
 
@@ -262,7 +331,7 @@ export default function Billing() {
                 variant="outline"
                 className="w-full"
                 onClick={() => handleUpgrade("starter")}
-                disabled={checkout.isPending || !billing.stripeConfigured}
+                disabled={subscribe.isPending || !canUpgrade}
               >
                 <ArrowUpRight size={14} className="mr-1" />
                 Get 500 messages/month with Starter
@@ -275,37 +344,72 @@ export default function Billing() {
       <Card>
         <CardHeader>
           <CardTitle>Compare Plans</CardTitle>
-          <CardDescription>Choose the plan that fits your store</CardDescription>
+          <CardDescription>
+            All plans are billed through Shopify — no separate credit card
+            needed
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4 text-sm">
             {[
-              { name: "Free", price: "$0/mo", messages: "50 messages/mo", key: "free" },
-              { name: "Starter", price: "$29/mo", messages: "500 messages/mo", key: "starter" },
-              { name: "Pro", price: "$99/mo", messages: "5,000 messages/mo", key: "pro" },
+              {
+                name: "Free",
+                price: "$0/mo",
+                messages: "50 messages/mo",
+                key: "free",
+              },
+              {
+                name: "Starter",
+                price: "$29/mo",
+                messages: "500 messages/mo",
+                key: "starter",
+              },
+              {
+                name: "Pro",
+                price: "$99/mo",
+                messages: "5,000 messages/mo",
+                key: "pro",
+              },
             ].map((plan) => (
               <div
                 key={plan.key}
-                className={`rounded-lg border p-4 ${billing.plan === plan.key ? "border-primary bg-primary/5" : "border-border"}`}
+                className={`rounded-lg border p-4 ${
+                  billing.plan === plan.key
+                    ? "border-primary bg-primary/5"
+                    : "border-border"
+                }`}
               >
                 <div className="font-semibold mb-1">{plan.name}</div>
-                <div className="text-muted-foreground text-xs mb-2">{plan.price}</div>
-                <div className="text-foreground font-medium">{plan.messages}</div>
+                <div className="text-muted-foreground text-xs mb-2">
+                  {plan.price}
+                </div>
+                <div className="text-foreground font-medium">
+                  {plan.messages}
+                </div>
                 {billing.plan === plan.key && (
-                  <Badge className="mt-2" variant="secondary">Current</Badge>
+                  <Badge className="mt-2" variant="secondary">
+                    Current
+                  </Badge>
                 )}
-                {billing.plan !== plan.key && ["starter", "pro"].includes(plan.key) && (
-                  <Button
-                    size="sm"
-                    className="mt-2 w-full"
-                    variant="outline"
-                    onClick={() => handleUpgrade(plan.key)}
-                    disabled={checkout.isPending || !billing.stripeConfigured || billing.plan === "pro"}
-                    data-testid={`button-plan-${plan.key}`}
-                  >
-                    {billing.plan === "pro" && plan.key === "starter" ? "Downgrade" : "Upgrade"}
-                  </Button>
-                )}
+                {billing.plan !== plan.key &&
+                  ["starter", "pro"].includes(plan.key) && (
+                    <Button
+                      size="sm"
+                      className="mt-2 w-full"
+                      variant="outline"
+                      onClick={() => handleUpgrade(plan.key)}
+                      disabled={
+                        subscribe.isPending ||
+                        !canUpgrade ||
+                        billing.plan === "pro"
+                      }
+                      data-testid={`button-plan-${plan.key}`}
+                    >
+                      {billing.plan === "pro" && plan.key === "starter"
+                        ? "Downgrade"
+                        : "Upgrade"}
+                    </Button>
+                  )}
               </div>
             ))}
           </div>

@@ -25,6 +25,9 @@ export const merchantsTable = pgTable("merchants", {
   subscriptionStatus: subscriptionStatusEnum("subscription_status").notNull().default("none"),
   currentPeriodEnd: timestamp("current_period_end"),
 
+  shopifyAccessToken: text("shopify_access_token"),
+  shopifySubscriptionGid: text("shopify_subscription_gid"),
+
   monthlyMessageCount: integer("monthly_message_count").notNull().default(0),
   usagePeriodStart: timestamp("usage_period_start"),
 

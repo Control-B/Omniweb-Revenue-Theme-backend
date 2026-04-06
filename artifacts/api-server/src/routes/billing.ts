@@ -1,121 +1,35 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, merchantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getStripe, PLAN_PRICE_IDS, isStripeConfigured, PLAN_LIMITS, PLAN_NAMES } from "../lib/stripe.js";
+import {
+  createAppSubscription,
+  getActiveSubscription,
+  cancelAppSubscription,
+  mapShopifyStatus,
+  getPlanFromSubscriptionName,
+  isShopifyConfigured,
+  getAppUrl,
+  verifyWebhookHmac,
+} from "../lib/shopify.js";
+import { PLAN_LIMITS, PLAN_NAMES } from "../lib/stripe.js";
 import { requireSessionAuth } from "../middleware/api-key.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
-// Uses server-side env vars only — never client-supplied headers (open-redirect risk)
-function getAppBaseUrl(): string {
-  if (process.env["STRIPE_RETURN_URL"]) {
-    return process.env["STRIPE_RETURN_URL"].replace(/\/$/, "");
-  }
-  if (process.env["REPLIT_DEV_DOMAIN"]) {
-    return `https://${process.env["REPLIT_DEV_DOMAIN"]}/dashboard`;
-  }
-  return "https://localhost/dashboard";
+function getDashboardBaseUrl(): string {
+  return `${getAppUrl()}/dashboard`;
 }
 
-function stripeNotConfigured(res: Response): void {
+function shopifyNotConfigured(res: Response): void {
   res.status(503).json({
-    error: "Stripe not configured",
-    message: "Stripe is not configured for this deployment. Set STRIPE_SECRET_KEY to enable billing.",
+    error: "Shopify app not configured",
+    message:
+      "Set SHOPIFY_API_KEY and SHOPIFY_API_SECRET to enable Shopify billing.",
   });
 }
 
-router.post(
-  "/billing/create-checkout-session",
-  requireSessionAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    if (!isStripeConfigured()) { stripeNotConfigured(res); return; }
-
-    const merchant = req.merchant!;
-    const { plan } = req.body as { plan?: string };
-
-    if (!plan || !["starter", "pro"].includes(plan)) {
-      res.status(400).json({ error: "plan must be 'starter' or 'pro'" });
-      return;
-    }
-
-    const priceId = PLAN_PRICE_IDS[plan];
-    if (!priceId) {
-      res.status(503).json({
-        error: "Plan price not configured",
-        message: `STRIPE_${plan.toUpperCase()}_PRICE_ID is not set.`,
-      });
-      return;
-    }
-
-    const stripe = getStripe()!;
-    const baseUrl = getAppBaseUrl();
-
-    try {
-      const rows = await db
-        .select({ stripeCustomerId: merchantsTable.stripeCustomerId })
-        .from(merchantsTable)
-        .where(eq(merchantsTable.id, merchant.id))
-        .limit(1);
-
-      const existingCustomerId = rows[0]?.stripeCustomerId ?? undefined;
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [{ price: priceId, quantity: 1 }],
-        customer: existingCustomerId,
-        customer_email: existingCustomerId ? undefined : merchant.email,
-        metadata: { merchantId: merchant.id, shopId: merchant.shopId, plan },
-        subscription_data: { metadata: { merchantId: merchant.id, shopId: merchant.shopId, plan } },
-        success_url: `${baseUrl}/billing?session_id={CHECKOUT_SESSION_ID}&status=success`,
-        cancel_url: `${baseUrl}/billing?status=canceled`,
-      });
-
-      res.json({ url: session.url });
-    } catch (err) {
-      logger.error({ err }, "Stripe checkout session error");
-      res.status(502).json({ error: "Failed to create checkout session. Please try again." });
-    }
-  }
-);
-
-router.post(
-  "/billing/create-portal-session",
-  requireSessionAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    if (!isStripeConfigured()) { stripeNotConfigured(res); return; }
-
-    const merchant = req.merchant!;
-    const baseUrl = getAppBaseUrl();
-
-    try {
-      const rows = await db
-        .select({ stripeCustomerId: merchantsTable.stripeCustomerId })
-        .from(merchantsTable)
-        .where(eq(merchantsTable.id, merchant.id))
-        .limit(1);
-
-      const customerId = rows[0]?.stripeCustomerId;
-      if (!customerId) {
-        res.status(400).json({ error: "No Stripe customer found. Please subscribe first." });
-        return;
-      }
-
-      const stripe = getStripe()!;
-      const session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: `${baseUrl}/billing`,
-      });
-
-      res.json({ url: session.url });
-    } catch (err) {
-      logger.error({ err }, "Stripe portal session error");
-      res.status(502).json({ error: "Failed to create portal session. Please try again." });
-    }
-  }
-);
-
+/** GET /billing/status — current plan, usage, and subscription info */
 router.get(
   "/billing/status",
   requireSessionAuth,
@@ -126,8 +40,8 @@ router.get(
       .select({
         plan: merchantsTable.plan,
         subscriptionStatus: merchantsTable.subscriptionStatus,
-        stripeCustomerId: merchantsTable.stripeCustomerId,
-        stripeSubscriptionId: merchantsTable.stripeSubscriptionId,
+        shopifyAccessToken: merchantsTable.shopifyAccessToken,
+        shopifySubscriptionGid: merchantsTable.shopifySubscriptionGid,
         currentPeriodEnd: merchantsTable.currentPeriodEnd,
         monthlyMessageCount: merchantsTable.monthlyMessageCount,
         usagePeriodStart: merchantsTable.usagePeriodStart,
@@ -141,22 +55,80 @@ router.get(
       return;
     }
 
-    const m = rows[0];
-    const plan = m.plan ?? "free";
-    const subscriptionStatus = m.subscriptionStatus ?? "none";
+    const m = rows[0]!;
+    let plan = m.plan ?? "free";
+    let subscriptionStatus = m.subscriptionStatus ?? "none";
+    let currentPeriodEnd = m.currentPeriodEnd;
 
-    // Mirror enforcement logic: inactive subscriptions use free-tier limits
+    // Fetch live subscription status from Shopify when we have a token
+    if (m.shopifyAccessToken && isShopifyConfigured()) {
+      try {
+        const liveSub = await getActiveSubscription(
+          merchant.shopId,
+          m.shopifyAccessToken,
+        );
+
+        if (liveSub) {
+          const livePlan = getPlanFromSubscriptionName(liveSub.name);
+          const liveStatus = mapShopifyStatus(liveSub.status);
+          const livePeriodEnd = liveSub.currentPeriodEnd
+            ? new Date(liveSub.currentPeriodEnd)
+            : null;
+
+          if (
+            livePlan !== plan ||
+            liveStatus !== subscriptionStatus ||
+            liveSub.id !== m.shopifySubscriptionGid
+          ) {
+            await db
+              .update(merchantsTable)
+              .set({
+                plan: livePlan,
+                subscriptionStatus: liveStatus,
+                currentPeriodEnd: livePeriodEnd,
+                shopifySubscriptionGid: liveSub.id,
+                updatedAt: new Date(),
+              })
+              .where(eq(merchantsTable.id, merchant.id));
+          }
+
+          plan = livePlan;
+          subscriptionStatus = liveStatus;
+          currentPeriodEnd = livePeriodEnd;
+        } else if (plan !== "free") {
+          await db
+            .update(merchantsTable)
+            .set({
+              plan: "free",
+              subscriptionStatus: "none",
+              shopifySubscriptionGid: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(merchantsTable.id, merchant.id));
+          plan = "free";
+          subscriptionStatus = "none";
+          currentPeriodEnd = null;
+        }
+      } catch (err) {
+        logger.warn(
+          { err, shopId: merchant.shopId },
+          "Could not fetch live Shopify subscription — using cached data",
+        );
+      }
+    }
+
     const isSubscriptionActive = ["active", "trialing"].includes(subscriptionStatus);
     const isPaidPlan = ["starter", "pro"].includes(plan);
     const effectivePlan = isPaidPlan && !isSubscriptionActive ? "free" : plan;
-
     const limit = PLAN_LIMITS[effectivePlan] ?? 50;
 
-    // Mirror period-reset logic: if stored period is before the current month, treat usage as 0
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const storedPeriod = m.usagePeriodStart;
-    const used = storedPeriod && storedPeriod >= periodStart ? (m.monthlyMessageCount ?? 0) : 0;
+    const used =
+      storedPeriod && storedPeriod >= periodStart
+        ? (m.monthlyMessageCount ?? 0)
+        : 0;
 
     res.json({
       plan,
@@ -165,276 +137,249 @@ router.get(
       effectivePlanName: PLAN_NAMES[effectivePlan] ?? effectivePlan,
       subscriptionStatus,
       isSubscriptionActive,
-      currentPeriodEnd: m.currentPeriodEnd?.toISOString() ?? null,
-      hasCustomer: !!m.stripeCustomerId,
+      currentPeriodEnd: currentPeriodEnd?.toISOString() ?? null,
+      hasShopifyToken: !!m.shopifyAccessToken,
+      shopifyConfigured: isShopifyConfigured(),
       usage: {
         used,
         limit,
         remaining: Math.max(0, limit - used),
         percentage: Math.min(100, Math.round((used / limit) * 100)),
       },
-      stripeConfigured: isStripeConfigured(),
     });
-  }
+  },
 );
 
+/** POST /billing/create-subscription — start a Shopify recurring charge */
 router.post(
-  "/billing/webhook",
+  "/billing/create-subscription",
+  requireSessionAuth,
   async (req: Request, res: Response): Promise<void> => {
-    if (!isStripeConfigured()) { stripeNotConfigured(res); return; }
+    if (!isShopifyConfigured()) {
+      shopifyNotConfigured(res);
+      return;
+    }
 
-    const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
-    if (!webhookSecret) {
-      logger.error("STRIPE_WEBHOOK_SECRET is not set — webhook rejected (fail closed)");
+    const merchant = req.merchant!;
+    const { plan } = req.body as { plan?: string };
+
+    if (!plan || !["starter", "pro"].includes(plan)) {
+      res.status(400).json({ error: "plan must be 'starter' or 'pro'" });
+      return;
+    }
+
+    const rows = await db
+      .select({ shopifyAccessToken: merchantsTable.shopifyAccessToken })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, merchant.id))
+      .limit(1);
+
+    const accessToken = rows[0]?.shopifyAccessToken;
+    if (!accessToken) {
       res.status(400).json({
-        error: "Webhook misconfigured",
-        message: "STRIPE_WEBHOOK_SECRET must be set to receive webhook events.",
+        error: "Store not connected via Shopify",
+        message: "Please install the app through Shopify to enable billing.",
+        installUrl: `/api/shopify/install?shop=${merchant.shopId}`,
       });
       return;
     }
 
-    const stripe = getStripe()!;
-    const sig = req.headers["stripe-signature"] as string | undefined;
-
-    if (!sig) {
-      logger.warn("Stripe webhook received without stripe-signature header — rejected");
-      res.status(400).json({ error: "Missing stripe-signature header" });
-      return;
-    }
-
-    let event;
+    const returnUrl = `${getDashboardBaseUrl()}/billing?status=success`;
 
     try {
-      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-    } catch (err) {
-      logger.warn({ err }, "Stripe webhook signature verification failed");
-      res.status(400).json({ error: "Invalid webhook signature" });
-      return;
-    }
+      const { confirmationUrl, subscriptionGid } = await createAppSubscription(
+        merchant.shopId,
+        accessToken,
+        plan,
+        returnUrl,
+      );
 
-    try {
-      await handleStripeEvent(event as { type: string; data: { object: Record<string, unknown> } });
-      res.json({ received: true });
+      await db
+        .update(merchantsTable)
+        .set({ shopifySubscriptionGid: subscriptionGid, updatedAt: new Date() })
+        .where(eq(merchantsTable.id, merchant.id));
+
+      res.json({ url: confirmationUrl });
     } catch (err) {
-      logger.error({ err, type: (event as { type: string }).type }, "Stripe webhook handler error");
-      res.status(500).json({ error: "Webhook handler failed" });
+      logger.error({ err, shopId: merchant.shopId }, "Shopify create-subscription error");
+      res.status(502).json({
+        error: err instanceof Error ? err.message : "Failed to create subscription",
+      });
     }
-  }
+  },
 );
 
-async function handleStripeEvent(event: { type: string; data: { object: Record<string, unknown> } }): Promise<void> {
-  const obj = event.data.object;
-
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = obj as { metadata?: Record<string, string>; customer?: string; subscription?: string };
-      const merchantId = session.metadata?.["merchantId"];
-      const plan = session.metadata?.["plan"] ?? "free";
-      const customerId = typeof session.customer === "string" ? session.customer : null;
-      const subscriptionId = typeof session.subscription === "string" ? session.subscription : null;
-
-      if (!merchantId) break;
-
-      // Retrieve the subscription now to get currentPeriodEnd deterministically,
-      // rather than waiting on a later subscription event (order not guaranteed).
-      let currentPeriodEnd: Date | undefined;
-      if (subscriptionId) {
-        try {
-          const stripe = getStripe();
-          if (stripe) {
-            const sub = await stripe.subscriptions.retrieve(subscriptionId);
-            currentPeriodEnd = new Date(sub.current_period_end * 1000);
-          }
-        } catch (err) {
-          logger.warn({ err, subscriptionId }, "Could not retrieve subscription for currentPeriodEnd");
-        }
-      }
-
-      await db
-        .update(merchantsTable)
-        .set({
-          plan: plan as "free" | "starter" | "pro",
-          subscriptionStatus: "active",
-          stripeCustomerId: customerId ?? undefined,
-          stripeSubscriptionId: subscriptionId ?? undefined,
-          currentPeriodEnd,
-          updatedAt: new Date(),
-        })
-        .where(eq(merchantsTable.id, merchantId));
-
-      logger.info({ merchantId, plan }, "Checkout completed — plan activated");
-      break;
+/** POST /billing/cancel-subscription — cancel the active Shopify recurring charge */
+router.post(
+  "/billing/cancel-subscription",
+  requireSessionAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    if (!isShopifyConfigured()) {
+      shopifyNotConfigured(res);
+      return;
     }
 
-    case "customer.subscription.created": {
-      const sub = obj as {
-        id: string;
-        status: string;
-        current_period_end: number;
-        customer: string;
-        metadata?: Record<string, string>;
-        items?: { data?: Array<{ price?: { id: string } }> };
-      };
-      const customerId = sub.customer;
-      const merchantId = await resolveMerchantIdFromSubscription(sub.id, customerId, sub.metadata);
-      if (!merchantId) break;
+    const merchant = req.merchant!;
 
-      const plan = getPlanFromPriceId(sub.items?.data?.[0]?.price?.id);
+    const rows = await db
+      .select({
+        shopifyAccessToken: merchantsTable.shopifyAccessToken,
+        shopifySubscriptionGid: merchantsTable.shopifySubscriptionGid,
+      })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, merchant.id))
+      .limit(1);
 
-      await db
-        .update(merchantsTable)
-        .set({
-          plan: plan as "free" | "starter" | "pro",
-          subscriptionStatus: mapStripeStatus(sub.status),
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          currentPeriodEnd: new Date(sub.current_period_end * 1000),
-          updatedAt: new Date(),
-        })
-        .where(eq(merchantsTable.id, merchantId));
+    const { shopifyAccessToken: accessToken, shopifySubscriptionGid: subscriptionGid } =
+      rows[0] ?? {};
 
-      logger.info({ merchantId, plan, status: sub.status }, "Subscription created");
-      break;
+    if (!accessToken || !subscriptionGid) {
+      res.status(400).json({ error: "No active Shopify subscription found to cancel" });
+      return;
     }
 
-    case "customer.subscription.updated": {
-      const sub = obj as {
-        id: string;
-        status: string;
-        current_period_end: number;
-        customer: string;
-        metadata?: Record<string, string>;
-        items?: { data?: Array<{ price?: { id: string } }> };
-      };
-      const customerId = sub.customer;
-      const merchantId = await resolveMerchantIdFromSubscription(sub.id, customerId, sub.metadata);
-      if (!merchantId) break;
-
-      const plan = getPlanFromPriceId(sub.items?.data?.[0]?.price?.id);
-
-      await db
-        .update(merchantsTable)
-        .set({
-          plan: plan as "free" | "starter" | "pro",
-          subscriptionStatus: mapStripeStatus(sub.status),
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          currentPeriodEnd: new Date(sub.current_period_end * 1000),
-          updatedAt: new Date(),
-        })
-        .where(eq(merchantsTable.id, merchantId));
-
-      logger.info({ merchantId, plan, status: sub.status }, "Subscription updated");
-      break;
-    }
-
-    case "customer.subscription.deleted": {
-      const sub = obj as { customer: string };
-      const customerId = sub.customer;
-
-      const rows = await db
-        .select({ id: merchantsTable.id })
-        .from(merchantsTable)
-        .where(eq(merchantsTable.stripeCustomerId, customerId))
-        .limit(1);
-
-      if (rows.length === 0) break;
-      const merchantId = rows[0].id;
+    try {
+      await cancelAppSubscription(merchant.shopId, accessToken, subscriptionGid);
 
       await db
         .update(merchantsTable)
         .set({
           plan: "free",
           subscriptionStatus: "canceled",
-          stripeSubscriptionId: null,
+          shopifySubscriptionGid: null,
           currentPeriodEnd: null,
           updatedAt: new Date(),
         })
-        .where(eq(merchantsTable.id, merchantId));
+        .where(eq(merchantsTable.id, merchant.id));
 
-      logger.info({ merchantId }, "Subscription cancelled — downgraded to free");
-      break;
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err, shopId: merchant.shopId }, "Shopify cancel-subscription error");
+      res.status(502).json({
+        error: err instanceof Error ? err.message : "Failed to cancel subscription",
+      });
+    }
+  },
+);
+
+/**
+ * POST /billing/shopify-webhook
+ * Receives Shopify app_subscriptions/update, app/uninstalled, and GDPR webhooks.
+ * Must be mounted with express.raw() BEFORE express.json() in app.ts.
+ */
+router.post(
+  "/billing/shopify-webhook",
+  async (req: Request, res: Response): Promise<void> => {
+    const hmacHeader = req.headers["x-shopify-hmac-sha256"] as string | undefined;
+    const topic = req.headers["x-shopify-topic"] as string | undefined;
+    const shop = req.headers["x-shopify-shop-domain"] as string | undefined;
+
+    if (!hmacHeader || !topic || !shop) {
+      res.status(401).json({ error: "Missing required Shopify webhook headers" });
+      return;
     }
 
-    case "invoice.payment_failed": {
-      const invoice = obj as { customer: string };
-      const customerId = invoice.customer;
+    const secret = process.env["SHOPIFY_API_SECRET"];
+    if (!secret) {
+      logger.error("SHOPIFY_API_SECRET not set — webhook rejected");
+      res.status(503).json({ error: "Webhook not configured" });
+      return;
+    }
+
+    const rawBody = req.body as Buffer;
+    if (!verifyWebhookHmac(rawBody, hmacHeader, secret)) {
+      logger.warn({ shop, topic }, "Shopify webhook HMAC verification failed");
+      res.status(401).json({ error: "Invalid webhook signature" });
+      return;
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(rawBody.toString()) as Record<string, unknown>;
+    } catch {
+      res.status(400).json({ error: "Invalid JSON body" });
+      return;
+    }
+
+    try {
+      await handleShopifyWebhook(topic, shop, payload);
+      res.json({ received: true });
+    } catch (err) {
+      logger.error({ err, topic, shop }, "Shopify webhook handler error");
+      res.status(500).json({ error: "Webhook handler failed" });
+    }
+  },
+);
+
+async function handleShopifyWebhook(
+  topic: string,
+  shop: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  switch (topic) {
+    case "app_subscriptions/update": {
+      const sub = payload as {
+        admin_graphql_api_id?: string;
+        name?: string;
+        status?: string;
+        current_period_end?: string;
+      };
 
       const rows = await db
         .select({ id: merchantsTable.id })
         .from(merchantsTable)
-        .where(eq(merchantsTable.stripeCustomerId, customerId))
+        .where(eq(merchantsTable.shopId, shop))
         .limit(1);
 
       if (rows.length === 0) break;
 
+      const plan = getPlanFromSubscriptionName(sub.name ?? "");
+      const status = mapShopifyStatus(sub.status ?? "");
+
       await db
         .update(merchantsTable)
-        .set({ subscriptionStatus: "past_due", updatedAt: new Date() })
-        .where(eq(merchantsTable.id, rows[0].id));
+        .set({
+          plan,
+          subscriptionStatus: status,
+          shopifySubscriptionGid: sub.admin_graphql_api_id ?? null,
+          currentPeriodEnd: sub.current_period_end
+            ? new Date(sub.current_period_end)
+            : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(merchantsTable.id, rows[0]!.id));
 
-      logger.warn({ merchantId: rows[0].id }, "Invoice payment failed");
+      logger.info({ shop, plan, status }, "Shopify subscription updated via webhook");
       break;
     }
 
+    case "app/uninstalled": {
+      await db
+        .update(merchantsTable)
+        .set({
+          shopifyAccessToken: null,
+          plan: "free",
+          subscriptionStatus: "canceled",
+          shopifySubscriptionGid: null,
+          currentPeriodEnd: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(merchantsTable.shopId, shop));
+
+      logger.info({ shop }, "App uninstalled — access token cleared, downgraded to free");
+      break;
+    }
+
+    // GDPR webhooks — required for Shopify App Store listing
+    case "customers/redact":
+    case "shop/redact":
+    case "customers/data_request":
+      logger.info({ topic, shop }, "GDPR webhook received and acknowledged");
+      break;
+
     default:
-      logger.info({ type: event.type }, "Unhandled Stripe event");
+      logger.info({ topic, shop }, "Unhandled Shopify webhook topic");
   }
-}
-
-// Resolve by customerId → subscriptionId → metadata.merchantId (in that order)
-async function resolveMerchantIdFromSubscription(
-  subscriptionId: string,
-  customerId: string,
-  metadata?: Record<string, string>,
-): Promise<string | null> {
-  // 1. By customerId
-  const byCustomer = await db
-    .select({ id: merchantsTable.id })
-    .from(merchantsTable)
-    .where(eq(merchantsTable.stripeCustomerId, customerId))
-    .limit(1);
-  if (byCustomer.length > 0) return byCustomer[0].id;
-
-  // 2. By subscriptionId (handles re-sent / re-created subscriptions)
-  const bySubscription = await db
-    .select({ id: merchantsTable.id })
-    .from(merchantsTable)
-    .where(eq(merchantsTable.stripeSubscriptionId, subscriptionId))
-    .limit(1);
-  if (bySubscription.length > 0) return bySubscription[0].id;
-
-  // 3. By metadata merchantId (set in checkout session metadata)
-  const metaMerchantId = metadata?.["merchantId"];
-  if (metaMerchantId) {
-    const byMeta = await db
-      .select({ id: merchantsTable.id })
-      .from(merchantsTable)
-      .where(eq(merchantsTable.id, metaMerchantId))
-      .limit(1);
-    if (byMeta.length > 0) return byMeta[0].id;
-  }
-
-  logger.warn({ subscriptionId, customerId }, "Could not resolve merchant from subscription event");
-  return null;
-}
-
-function mapStripeStatus(status: string): "none" | "trialing" | "active" | "past_due" | "canceled" | "incomplete" {
-  switch (status) {
-    case "active": return "active";
-    case "trialing": return "trialing";
-    case "past_due": return "past_due";
-    case "canceled": return "canceled";
-    case "incomplete": return "incomplete";
-    default: return "none";
-  }
-}
-
-function getPlanFromPriceId(priceId?: string): string {
-  if (!priceId) return "free";
-  if (priceId === PLAN_PRICE_IDS["starter"]) return "starter";
-  if (priceId === PLAN_PRICE_IDS["pro"]) return "pro";
-  return "free";
 }
 
 export default router;

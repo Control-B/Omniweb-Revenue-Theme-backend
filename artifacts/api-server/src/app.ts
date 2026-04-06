@@ -51,10 +51,10 @@ app.use(
 
 app.use(cookieParser());
 
-/* Stripe webhooks need the raw body for signature verification.
- * Mount BEFORE the global JSON parser. */
+/* Shopify webhooks need the raw body for HMAC signature verification.
+ * Must be mounted BEFORE the global JSON parser. */
 app.use(
-  "/api/billing/webhook",
+  "/api/billing/shopify-webhook",
   express.raw({ type: "application/json" }),
 );
 
