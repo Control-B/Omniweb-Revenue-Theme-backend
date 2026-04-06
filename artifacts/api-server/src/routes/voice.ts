@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { getAvailableVoices } from "../lib/widget-config-store.js";
+import { getAvailableVoices, isShopRegistered } from "../lib/widget-config-store.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -8,14 +8,20 @@ const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1";
 const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 
 router.post("/voice", async (req: Request, res: Response): Promise<void> => {
-  const { text, voiceId, modelId } = req.body as {
+  const { text, voiceId, modelId, shopId } = req.body as {
     text?: string;
     voiceId?: string;
     modelId?: string;
+    shopId?: string;
   };
 
   if (!text || typeof text !== "string" || text.trim().length === 0) {
     res.status(400).json({ error: "text is required" });
+    return;
+  }
+
+  if (!shopId || typeof shopId !== "string" || !isShopRegistered(shopId.slice(0, 200))) {
+    res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
     return;
   }
 

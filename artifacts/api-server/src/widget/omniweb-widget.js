@@ -290,7 +290,7 @@
       return fetch(API_URL + '/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, voiceId: cfg.voiceId })
+        body: JSON.stringify({ text: text, voiceId: cfg.voiceId, shopId: SHOP_ID })
       }).then(function (r) {
         if (!r.ok) return;
         return r.arrayBuffer().then(function (buf) {
@@ -313,13 +313,19 @@
   }
 
   /* ── Toggle panel ── */
+  var configRefreshInterval = null;
+
   function openPanel() {
     isOpen = true;
     root.classList.add('open');
     btnEl.setAttribute('aria-expanded', 'true');
     panelEl.setAttribute('aria-hidden', 'false');
+    fetchConfig();
     showGreeting();
     setTimeout(function () { inputEl.focus(); }, 250);
+    if (!configRefreshInterval) {
+      configRefreshInterval = setInterval(fetchConfig, 30000);
+    }
   }
 
   function closePanel() {
@@ -327,6 +333,10 @@
     root.classList.remove('open');
     btnEl.setAttribute('aria-expanded', 'false');
     panelEl.setAttribute('aria-hidden', 'true');
+    if (configRefreshInterval) {
+      clearInterval(configRefreshInterval);
+      configRefreshInterval = null;
+    }
   }
 
   /* ── Events ── */

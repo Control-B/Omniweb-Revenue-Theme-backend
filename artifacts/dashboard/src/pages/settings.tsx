@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { makeZodResolver } from "@/lib/zod-form-resolver";
 import { useWidgetConfig, useUpdateWidgetConfig, useVoices } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 
 const configSchema = z.object({
@@ -34,8 +34,7 @@ export default function Settings() {
   const { data: voicesData, isLoading: isVoicesLoading } = useVoices();
   const updateConfig = useUpdateWidgetConfig();
   const form = useForm<ConfigFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(configSchema as any),
+    resolver: makeZodResolver(configSchema),
     defaultValues: {
       widgetTitle: "",
       greeting: "",
@@ -75,10 +74,6 @@ export default function Settings() {
       }
     });
   };
-
-  const previewColor = form.watch("accentColor");
-  const previewPosition = form.watch("position");
-  const previewTitle = form.watch("widgetTitle");
 
   if (isConfigLoading || isVoicesLoading) {
     return (
@@ -303,65 +298,25 @@ export default function Settings() {
         <div className="lg:col-span-1">
           <div className="sticky top-8">
             <h3 className="font-semibold mb-4">Live Preview</h3>
-            <div className="relative h-[600px] w-full rounded-xl border border-border bg-slate-100 dark:bg-slate-900 overflow-hidden flex flex-col shadow-inner">
-              {/* Fake Browser Chrome */}
-              <div className="h-10 bg-slate-200 dark:bg-slate-800 border-b border-border flex items-center px-4 gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-400" />
-                <div className="w-3 h-3 rounded-full bg-amber-400" />
-                <div className="w-3 h-3 rounded-full bg-green-400" />
-                <div className="ml-4 flex-1 h-6 bg-white dark:bg-slate-950 rounded-md text-[10px] flex items-center px-3 text-muted-foreground opacity-70">
-                  {credentials?.shopId}
+            <p className="text-xs text-muted-foreground mb-3">
+              Shows the actual widget after saving. Refreshes when the widget re-fetches its config (every 30s or on open).
+            </p>
+            <div className="rounded-xl border border-border overflow-hidden shadow-inner bg-slate-100 dark:bg-slate-900">
+              <div className="h-9 bg-slate-200 dark:bg-slate-800 border-b border-border flex items-center px-3 gap-2 flex-shrink-0">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                <div className="ml-3 flex-1 h-5 bg-white dark:bg-slate-950 rounded text-[10px] flex items-center px-2 text-muted-foreground truncate opacity-70">
+                  {credentials?.shopId ?? "preview"}
                 </div>
               </div>
-              
-              {/* Fake Store Content */}
-              <div className="flex-1 p-6 space-y-4 opacity-40 pointer-events-none">
-                <div className="w-1/3 h-8 bg-slate-300 dark:bg-slate-700 rounded" />
-                <div className="w-full h-40 bg-slate-300 dark:bg-slate-700 rounded" />
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="h-32 bg-slate-300 dark:bg-slate-700 rounded" />
-                  <div className="h-32 bg-slate-300 dark:bg-slate-700 rounded" />
-                  <div className="h-32 bg-slate-300 dark:bg-slate-700 rounded" />
-                </div>
-              </div>
-
-              {/* Fake Widget */}
-              {form.watch("enabled") !== false && (
-                <div 
-                  className="absolute bottom-6 flex flex-col gap-4 max-w-[280px] w-[calc(100%-48px)] transition-all duration-300 ease-in-out"
-                  style={{
-                    [previewPosition === "bottom-left" ? "left" : "right"]: "24px",
-                    alignItems: previewPosition === "bottom-left" ? "flex-start" : "flex-end"
-                  }}
-                >
-                  <div className="w-full bg-background rounded-xl shadow-xl overflow-hidden border border-border flex flex-col h-[320px]">
-                    <div 
-                      className="p-4 text-white font-medium flex items-center gap-2"
-                      style={{ backgroundColor: previewColor }}
-                    >
-                      <MessageCircle size={18} />
-                      <span className="truncate">{previewTitle || "AI Assistant"}</span>
-                    </div>
-                    <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto">
-                      <div className="bg-muted p-3 rounded-2xl rounded-tl-sm text-sm text-foreground max-w-[85%] self-start">
-                        {form.watch("greeting") || "Hello!"}
-                      </div>
-                    </div>
-                    <div className="p-3 border-t border-border">
-                      <div className="h-10 bg-muted rounded-full w-full flex items-center px-4">
-                        <span className="text-xs text-muted-foreground">Type a message...</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div 
-                    className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white cursor-pointer"
-                    style={{ backgroundColor: previewColor }}
-                  >
-                    <MessageCircle size={24} />
-                  </div>
-                </div>
-              )}
+              <iframe
+                key={credentials?.shopId}
+                src={`/preview?shopId=${encodeURIComponent(credentials?.shopId ?? "demo.myshopify.com")}`}
+                title="Widget preview"
+                className="w-full h-[580px] border-0 block"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
             </div>
           </div>
         </div>

@@ -6,7 +6,7 @@ import {
   updateSystemMessage,
   type Message,
 } from "../lib/session-store.js";
-import { getWidgetConfig } from "../lib/widget-config-store.js";
+import { getWidgetConfig, isShopRegistered } from "../lib/widget-config-store.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -183,6 +183,11 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
   }
 
   const shop = shopId.slice(0, 200);
+
+  if (!isShopRegistered(shop)) {
+    res.status(403).json({ error: "Shop not registered. Configure your widget in the Omniweb dashboard first." });
+    return;
+  }
   const config = getWidgetConfig(shop);
   const session = getOrCreateSession(sessionId, shop);
 

@@ -103,6 +103,61 @@ app.use("/api/conversations", requireApiKey);
 
 app.use("/api", router);
 
+app.get("/preview", (req: Request, res: Response) => {
+  const shopId = (req.query.shopId as string | undefined) ?? "demo.myshopify.com";
+  const apiUrl = `${req.protocol}://${req.get("host")}`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Widget Preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           background: #f4f4f5; color: #111; min-height: 100vh; }
+    .nav { background: #fff; border-bottom: 1px solid #e5e7eb;
+           padding: 14px 24px; display: flex; align-items: center; gap: 24px; }
+    .nav-brand { font-weight: 700; font-size: 18px; }
+    .nav-link { font-size: 14px; color: #6b7280; }
+    .hero { background: #fff; padding: 48px 24px; text-align: center; border-bottom: 1px solid #e5e7eb; }
+    .hero h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+    .hero p { color: #6b7280; font-size: 15px; margin-bottom: 24px; }
+    .hero-btn { background: #111; color: #fff; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; cursor: default; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 24px; max-width: 960px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+    .card-img { width: 100%; aspect-ratio: 4/3; background: #e5e7eb; }
+    .card-body { padding: 12px; }
+    .card-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .card-price { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav-brand">My Shopify Store</span>
+    <span class="nav-link">Collections</span>
+    <span class="nav-link">Products</span>
+    <span class="nav-link">About</span>
+  </nav>
+  <section class="hero">
+    <h1>Summer Collection 2025</h1>
+    <p>Discover our latest arrivals — handcrafted with care.</p>
+    <button class="hero-btn">Shop Now</button>
+  </section>
+  <div class="grid">
+    ${["Premium Hoodie", "Classic Tee", "Cargo Pants", "Canvas Tote", "Snapback Cap", "Denim Jacket"]
+      .map((name, i) => `<div class="card"><div class="card-img" style="background:hsl(${i * 60},15%,88%)"></div><div class="card-body"><div class="card-title">${name}</div><div class="card-price">$${(29 + i * 15).toFixed(2)}</div></div></div>`)
+      .join("")}
+  </div>
+  <script src="${apiUrl}/widget.js"
+    data-api-url="${apiUrl}"
+    data-shop-id="${shopId}"
+    defer></script>
+</body>
+</html>`);
+});
+
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: "Not found" });
 });

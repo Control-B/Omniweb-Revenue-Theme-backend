@@ -21,6 +21,11 @@ const DEFAULT_CONFIG: Omit<WidgetConfig, "shopId"> = {
 };
 
 const configs = new Map<string, WidgetConfig>();
+const registeredShops = new Set<string>(["demo.myshopify.com"]);
+
+export function isShopRegistered(shopId: string): boolean {
+  return registeredShops.has(shopId);
+}
 
 export function getWidgetConfig(shopId: string): WidgetConfig {
   if (!configs.has(shopId)) {
@@ -36,6 +41,7 @@ export function updateWidgetConfig(
   const existing = getWidgetConfig(shopId);
   const updated = { ...existing, ...updates, shopId };
   configs.set(shopId, updated);
+  registeredShops.add(shopId);
   return updated;
 }
 
