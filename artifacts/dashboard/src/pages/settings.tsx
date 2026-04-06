@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { makeZodResolver } from "@/lib/zod-form-resolver";
@@ -20,7 +19,7 @@ const configSchema = z.object({
   widgetTitle: z.string().min(1, "Widget title is required"),
   greeting: z.string().min(1, "Greeting is required"),
   persona: z.string().min(1, "Persona instructions are required"),
-  voiceId: z.string().min(1, "Please select a voice"),
+  voiceId: z.string().optional().default(""),
   accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/i, "Must be a valid hex color"),
   position: z.enum(["bottom-right", "bottom-left"]),
   enabled: z.boolean(),
@@ -33,6 +32,8 @@ export default function Settings() {
   const { data: config, isLoading: isConfigLoading } = useWidgetConfig();
   const { data: voicesData, isLoading: isVoicesLoading } = useVoices();
   const updateConfig = useUpdateWidgetConfig();
+  const firstVoice = voicesData?.voices?.[0]?.id ?? "";
+
   const form = useForm<ConfigFormValues>({
     resolver: makeZodResolver(configSchema),
     defaultValues: {
@@ -40,25 +41,22 @@ export default function Settings() {
       greeting: "",
       persona: "",
       voiceId: "",
-      accentColor: "#000000",
+      accentColor: "#E63946",
       position: "bottom-right",
-      enabled: false,
+      enabled: true,
     },
+    values: config
+      ? {
+          widgetTitle: config.widgetTitle,
+          greeting: config.greeting,
+          persona: config.persona,
+          voiceId: config.voiceId || firstVoice,
+          accentColor: config.accentColor,
+          position: config.position as "bottom-right" | "bottom-left",
+          enabled: config.enabled,
+        }
+      : undefined,
   });
-
-  useEffect(() => {
-    if (config) {
-      form.reset({
-        widgetTitle: config.widgetTitle,
-        greeting: config.greeting,
-        persona: config.persona,
-        voiceId: config.voiceId,
-        accentColor: config.accentColor,
-        position: config.position,
-        enabled: config.enabled,
-      });
-    }
-  }, [config, form]);
 
   const onSubmit = (data: ConfigFormValues) => {
     updateConfig.mutate(data, {
@@ -230,11 +228,14 @@ export default function Settings() {
                     name="voiceId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>AI Voice</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormLabel>
+                          AI Voice
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">(optional — requires ElevenLabs)</span>
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ""}>
                           <FormControl>
                             <SelectTrigger data-testid="select-voice">
-                              <SelectValue placeholder="Select a voice" />
+                              <SelectValue placeholder="No voice (text only)" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -246,7 +247,11 @@ export default function Settings() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormDescription>The voice used when the AI speaks to the customer.</FormDescription>
+                        <FormDescription>
+                          {voicesData?.connected
+                            ? "ElevenLabs connected — voice responses enabled."
+                            : "Add an ElevenLabs API key to enable voice responses."}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -312,7 +317,7 @@ export default function Settings() {
               </div>
               <iframe
                 key={credentials?.shopId}
-                src={`/preview?shopId=${encodeURIComponent(credentials?.shopId ?? "demo.myshopify.com")}`}
+                src={`/api/preview?shopId=${encodeURIComponent(credentials?.shopId ?? "demo.myshopify.com")}`}
                 title="Widget preview"
                 className="w-full h-[580px] border-0 block"
                 sandbox="allow-scripts allow-same-origin allow-forms"

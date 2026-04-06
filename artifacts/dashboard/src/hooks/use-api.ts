@@ -116,7 +116,7 @@ export function useVoices() {
 
   return useQuery<{ voices: Voice[] }>({
     queryKey: ["voices"],
-    queryFn: () => apiFetch("/api/voices"),
+    queryFn: () => apiFetch("/api/voices-status"),
     enabled: isAuthenticated,
   });
 }

@@ -125,8 +125,10 @@ app.use("/api", router);
 app.get(["/preview", "/api/preview"], (req: Request, res: Response) => {
   const shopId = (req.query.shopId as string | undefined) ?? "demo.myshopify.com";
   const base = `${req.protocol}://${req.get("host")}`;
-  /* When accessed through the /api proxy prefix, include it in widget URLs */
-  const apiUrl = req.path.startsWith("/api/") ? `${base}/api` : base;
+  /* data-api-url is always the base domain — the widget itself appends /api/... */
+  const apiUrl = base;
+  /* widget.js src: through the Replit proxy the path is /api/widget.js; direct is /widget.js */
+  const widgetSrc = req.path.startsWith("/api/") ? `${base}/api/widget.js` : `${base}/widget.js`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -171,7 +173,7 @@ app.get(["/preview", "/api/preview"], (req: Request, res: Response) => {
       .map((name, i) => `<div class="card"><div class="card-img" style="background:hsl(${i * 60},15%,88%)"></div><div class="card-body"><div class="card-title">${name}</div><div class="card-price">$${(29 + i * 15).toFixed(2)}</div></div></div>`)
       .join("")}
   </div>
-  <script src="${apiUrl}/widget.js"
+  <script src="${widgetSrc}"
     data-api-url="${apiUrl}"
     data-shop-id="${shopId}"
     defer></script>
