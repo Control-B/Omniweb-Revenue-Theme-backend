@@ -39,6 +39,21 @@ export function updateWidgetConfig(
   return updated;
 }
 
+export interface PublicWidgetConfig {
+  shopId: string;
+  widgetTitle: string;
+  greeting: string;
+  accentColor: string;
+  position: "bottom-right" | "bottom-left";
+  enabled: boolean;
+  voiceId: string;
+}
+
+export function getPublicWidgetConfig(shopId: string): PublicWidgetConfig {
+  const { shopId: sid, widgetTitle, greeting, accentColor, position, enabled, voiceId } = getWidgetConfig(shopId);
+  return { shopId: sid, widgetTitle, greeting, accentColor, position, enabled, voiceId };
+}
+
 export function getAvailableVoices(): Array<{ id: string; name: string; description: string }> {
   return [
     { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, professional female voice" },

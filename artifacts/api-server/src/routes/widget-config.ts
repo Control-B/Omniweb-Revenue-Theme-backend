@@ -1,12 +1,25 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   getWidgetConfig,
+  getPublicWidgetConfig,
   updateWidgetConfig,
   getAvailableVoices,
 } from "../lib/widget-config-store.js";
 import { getRecentSessions } from "../lib/session-store.js";
 
 const router: IRouter = Router();
+
+router.get(
+  "/widget/:shopId/config",
+  (req: Request<{ shopId: string }>, res: Response): void => {
+    const shopId = req.params.shopId;
+    if (!shopId || typeof shopId !== "string") {
+      res.status(400).json({ error: "shopId is required" });
+      return;
+    }
+    res.json(getPublicWidgetConfig(shopId));
+  }
+);
 
 router.get(
   "/widget-config/:shopId",

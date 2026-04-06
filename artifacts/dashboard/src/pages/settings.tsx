@@ -34,7 +34,8 @@ export default function Settings() {
   const { data: voicesData, isLoading: isVoicesLoading } = useVoices();
   const updateConfig = useUpdateWidgetConfig();
   const form = useForm<ConfigFormValues>({
-    resolver: zodResolver(configSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(configSchema as any),
     defaultValues: {
       widgetTitle: "",
       greeting: "",

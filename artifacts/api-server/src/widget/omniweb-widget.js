@@ -1,23 +1,20 @@
-/* Omniweb AI Sales Widget — v1.0.0
+/* Omniweb AI Sales Widget — v1.1.0
  * Self-contained IIFE, no external dependencies.
  * Install: <script src="https://your-api.replit.app/widget.js"
  *              data-api-url="https://your-api.replit.app"
- *              data-api-key="your-widget-api-key"
  *              data-shop-id="your-shop.myshopify.com"></script>
  */
 (function () {
   'use strict';
 
-  /* ── Config from script tag ── */
   var script = document.currentScript;
   if (!script) return;
 
-  var API_URL  = (script.getAttribute('data-api-url') || '').replace(/\/$/, '');
-  var API_KEY  = script.getAttribute('data-api-key') || '';
-  var SHOP_ID  = script.getAttribute('data-shop-id') || window.location.hostname;
+  var API_URL = (script.getAttribute('data-api-url') || '').replace(/\/$/, '');
+  var SHOP_ID = script.getAttribute('data-shop-id') || window.location.hostname;
 
-  if (!API_URL || !API_KEY) {
-    console.warn('[Omniweb Widget] data-api-url and data-api-key are required.');
+  if (!API_URL) {
+    console.warn('[Omniweb Widget] data-api-url is required.');
     return;
   }
 
@@ -240,11 +237,8 @@
     appendMessage('bot', cfg.greeting);
   }
 
-  /* ── Fetch config ── */
   function fetchConfig() {
-    fetch(API_URL + '/api/widget-config/' + encodeURIComponent(SHOP_ID), {
-      headers: { 'x-widget-api-key': API_KEY }
-    })
+    fetch(API_URL + '/api/widget/' + encodeURIComponent(SHOP_ID) + '/config')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) { if (data) applyConfig(data); })
       .catch(function () {});
@@ -264,10 +258,7 @@
 
     fetch(API_URL + '/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-widget-api-key': API_KEY
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId: sessionId,
         message:   text.trim(),
@@ -298,10 +289,7 @@
     audioQueue = audioQueue.then(function () {
       return fetch(API_URL + '/api/voice', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-widget-api-key': API_KEY
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text, voiceId: cfg.voiceId })
       }).then(function (r) {
         if (!r.ok) return;

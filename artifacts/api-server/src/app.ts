@@ -91,9 +91,11 @@ app.use(widgetFileRouter);
 
 app.use(globalLimiter);
 
-/* Widget API surface — API key auth + per-endpoint rate limiting */
-app.use("/api/chat", chatLimiter, requireApiKey);
-app.use("/api/voice", voiceLimiter, requireApiKey);
+/* Public widget endpoints — rate limited, no API key required */
+app.use("/api/chat", chatLimiter);
+app.use("/api/voice", voiceLimiter);
+
+/* Admin-only endpoints — require API key */
 app.use("/api/voices", requireApiKey);
 app.use("/api/voices-status", requireApiKey);
 app.use("/api/widget-config", requireApiKey);
