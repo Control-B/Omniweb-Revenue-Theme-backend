@@ -67,6 +67,7 @@ router.post(
         customer: existingCustomerId,
         customer_email: existingCustomerId ? undefined : merchant.email,
         metadata: { merchantId: merchant.id, shopId: merchant.shopId, plan },
+        subscription_data: { metadata: { merchantId: merchant.id, shopId: merchant.shopId, plan } },
         success_url: `${baseUrl}/billing?session_id={CHECKOUT_SESSION_ID}&status=success`,
         cancel_url: `${baseUrl}/billing?status=canceled`,
       });
@@ -234,6 +235,21 @@ async function handleStripeEvent(event: { type: string; data: { object: Record<s
 
       if (!merchantId) break;
 
+      // Retrieve the subscription now to get currentPeriodEnd deterministically,
+      // rather than waiting on a later subscription event (order not guaranteed).
+      let currentPeriodEnd: Date | undefined;
+      if (subscriptionId) {
+        try {
+          const stripe = getStripe();
+          if (stripe) {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            currentPeriodEnd = new Date(sub.current_period_end * 1000);
+          }
+        } catch (err) {
+          logger.warn({ err, subscriptionId }, "Could not retrieve subscription for currentPeriodEnd");
+        }
+      }
+
       await db
         .update(merchantsTable)
         .set({
@@ -241,6 +257,7 @@ async function handleStripeEvent(event: { type: string; data: { object: Record<s
           subscriptionStatus: "active",
           stripeCustomerId: customerId ?? undefined,
           stripeSubscriptionId: subscriptionId ?? undefined,
+          currentPeriodEnd,
           updatedAt: new Date(),
         })
         .where(eq(merchantsTable.id, merchantId));
