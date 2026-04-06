@@ -34,8 +34,11 @@ Merchants sign up with email + shopId + password. Passwords hashed with bcryptjs
 - `artifacts/api-server/src/lib/jwt.ts` — 7-day JWT sign/verify (uses SESSION_SECRET env var)
 - `artifacts/api-server/src/routes/auth.ts` — signup/login/me/rotate-key endpoints
 
-**Dashboard auth flow:**
-- `sessionStorage["ow_merchant_session"]` = `{token, shopId, email}`
+**Dashboard auth flow (cookie-based):**
+- Auth uses HttpOnly `ow_session` cookie (set server-side on login/signup, cleared on logout)
+- No JWT or token is ever stored in client-side JS storage
+- On app load, `use-auth.tsx` calls `GET /api/auth/me` to validate cookie and hydrate auth state
+- Only display metadata (shopId, email) is held in React state for the current session
 - Signup → shows API key once → "Continue to Dashboard" → `/settings`
 - Pages: Login (`/`), Signup (`/signup`), API Keys (`/api-keys`)
 

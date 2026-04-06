@@ -16,42 +16,37 @@ interface AuthContextType {
   credentials: { shopId: string } | null;
 }
 
-const STORAGE_KEY = "ow_merchant_ui";
-
-function readFromStorage(): AuthState | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as AuthState) : null;
-  } catch {
-    return null;
-  }
+interface MeResponse {
+  shopId: string;
+  email: string;
+  plan: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [auth, setAuth] = useState<AuthState | null>(() => readFromStorage());
+  const [auth, setAuth] = useState<AuthState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setLocation] = useLocation();
 
-  /* On mount, verify the HttpOnly session cookie is still valid by hitting /api/auth/me.
-   * If the cookie is missing or expired, clear the local UI state. */
+  /*
+   * On every mount, we validate the HttpOnly session cookie by calling /api/auth/me.
+   * This is the single source of truth — we do not read from sessionStorage first.
+   * If the server says the session is valid, we hydrate auth from its response.
+   * This ensures new tabs, restored sessions, and page refreshes all work correctly.
+   */
   useEffect(() => {
-    const savedState = readFromStorage();
-    if (!savedState) {
-      setIsLoading(false);
-      return;
-    }
-
     fetch("/api/auth/me", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) {
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json() as MeResponse;
+          setAuth({ shopId: data.shopId, email: data.email, plan: data.plan });
+        } else {
           setAuth(null);
-          try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
         }
       })
       .catch(() => {
-        // Network error — keep UI state optimistically, server will 401 on real requests
+        setAuth(null);
       })
       .finally(() => {
         setIsLoading(false);
@@ -60,10 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (state: AuthState) => {
     setAuth(state);
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-    }
   };
 
   const logout = async () => {
@@ -72,10 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
     }
     setAuth(null);
-    try {
-      sessionStorage.removeItem(STORAGE_KEY);
-    } catch {
-    }
     setLocation("/");
   };
 
