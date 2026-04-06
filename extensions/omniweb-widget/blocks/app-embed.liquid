@@ -1,0 +1,38 @@
+{% comment %}
+  Omniweb Revenue — AI Sales Assistant
+  ─────────────────────────────────────
+  This app embed block injects the Omniweb widget on every storefront page.
+
+  To activate:
+    Shopify Admin → Online Store → Themes → Customize →
+    App Embeds → toggle "Omniweb Widget" on →
+    paste your API URL from the Omniweb dashboard → Save
+{% endcomment %}
+
+{% if block.settings.api_url != blank %}
+  <script
+    src="{{ block.settings.api_url }}/api/widget.js"
+    data-api-url="{{ block.settings.api_url }}"
+    data-shop-id="{{ shop.permanent_domain }}"
+    defer
+  ></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Omniweb Widget",
+  "target": "body",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Paste your **API URL** from the Omniweb dashboard (Install page) then save. The AI sales assistant will appear on all storefront pages."
+    },
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "API URL",
+      "info": "e.g. https://your-app.replit.app — find it in Omniweb Dashboard → Install"
+    }
+  ]
+}
+{% endschema %}

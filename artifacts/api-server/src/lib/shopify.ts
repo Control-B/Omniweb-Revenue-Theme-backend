@@ -315,6 +315,53 @@ export async function getActiveSubscription(
   };
 }
 
+/**
+ * Register all required webhooks for this app immediately after OAuth.
+ * Safe to call on re-installs — Shopify deduplicates by callbackUrl + topic.
+ */
+export async function registerWebhooks(
+  shop: string,
+  accessToken: string,
+): Promise<void> {
+  const appUrl = getAppUrl();
+  const callbackUrl = `${appUrl}/api/billing/shopify-webhook`;
+
+  const topics = [
+    "APP_UNINSTALLED",
+    "APP_SUBSCRIPTIONS_UPDATE",
+    "CUSTOMERS_REDACT",
+    "CUSTOMERS_DATA_REQUEST",
+    "SHOP_REDACT",
+  ] as const;
+
+  const mutation = `
+    mutation WebhookSubscriptionCreate(
+      $topic: WebhookSubscriptionTopic!
+      $webhookSubscription: WebhookSubscriptionInput!
+    ) {
+      webhookSubscriptionCreate(
+        topic: $topic
+        webhookSubscription: $webhookSubscription
+      ) {
+        userErrors { field message }
+        webhookSubscription { id topic }
+      }
+    }
+  `;
+
+  for (const topic of topics) {
+    try {
+      await shopifyGraphQL(shop, accessToken, mutation, {
+        topic,
+        webhookSubscription: { callbackUrl, format: "JSON" },
+      });
+    } catch {
+      // Topic may already be registered — Shopify returns an error rather than
+      // upserting; silently skip so the install flow isn't blocked.
+    }
+  }
+}
+
 export async function cancelAppSubscription(
   shop: string,
   accessToken: string,

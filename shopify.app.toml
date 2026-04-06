@@ -1,0 +1,56 @@
+# Omniweb Revenue — Shopify App Configuration
+# Managed by Shopify CLI v3. Run `shopify app dev` to start local development.
+#
+# Setup steps:
+#   1. Create the app in Shopify Partners (partners.shopify.com → Apps → Create app)
+#   2. Copy the Client ID into the env var SHOPIFY_API_KEY
+#   3. Copy the Client Secret into the env var SHOPIFY_API_SECRET
+#   4. Run: shopify app config link   (links this file to your Partners app)
+#   5. Run: shopify app dev           (starts local dev with ngrok tunnel)
+
+name = "Omniweb Revenue"
+client_id = ""           # Populated by `shopify app config link`
+application_url = ""     # Populated by `shopify app dev` / `shopify app deploy`
+embedded = false         # External dashboard (not embedded in Shopify admin)
+
+[access_scopes]
+  scopes = "read_products"
+
+[auth]
+  redirect_urls = [
+    "https://localhost/api/shopify/callback",
+    # Add your production domain here after deploying:
+    # "https://your-app.replit.app/api/shopify/callback",
+  ]
+
+[webhooks]
+  api_version = "2025-01"
+
+  # App lifecycle
+  [[webhooks.subscriptions]]
+    topics       = ["app/uninstalled"]
+    uri          = "/api/billing/shopify-webhook"
+
+  # Subscription changes (plan upgrades, renewals, cancellations)
+  [[webhooks.subscriptions]]
+    topics       = ["app_subscriptions/update"]
+    uri          = "/api/billing/shopify-webhook"
+
+  # GDPR — required for App Store listing
+  [[webhooks.subscriptions]]
+    topics       = ["customers/redact"]
+    uri          = "/api/billing/shopify-webhook"
+
+  [[webhooks.subscriptions]]
+    topics       = ["customers/data_request"]
+    uri          = "/api/billing/shopify-webhook"
+
+  [[webhooks.subscriptions]]
+    topics       = ["shop/redact"]
+    uri          = "/api/billing/shopify-webhook"
+
+[pos]
+  embedded = false
+
+# Extensions are discovered automatically from the extensions/ directory.
+# Deploy with: shopify app deploy

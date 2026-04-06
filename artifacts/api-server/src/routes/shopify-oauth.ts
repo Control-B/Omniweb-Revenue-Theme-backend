@@ -7,6 +7,7 @@ import {
   buildInstallUrl,
   exchangeCodeForToken,
   verifyHmac,
+  registerWebhooks,
   getAppUrl,
 } from "../lib/shopify.js";
 import { signToken } from "../lib/jwt.js";
@@ -152,6 +153,11 @@ router.get(
 
         logger.info({ merchantId, shop }, "Shopify OAuth: created new merchant via install");
       }
+
+      // Register all required webhooks (idempotent — safe on re-install)
+      registerWebhooks(shop, accessToken).catch((err) => {
+        logger.warn({ err, shop }, "Shopify OAuth: webhook registration partial failure");
+      });
 
       // Issue session so the merchant is immediately logged into the dashboard
       const token = signToken({ merchantId, email: merchantEmail, shopId: shop });
