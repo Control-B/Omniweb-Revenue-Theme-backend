@@ -8,15 +8,26 @@ import { logger } from "./lib/logger.js";
 
 const app: Express = express();
 
-const ALLOWED_ORIGINS = [
-  /\.myshopify\.com$/,
-  /\.shopify\.com$/,
-  /localhost/,
-  /127\.0\.0\.1/,
-  /\.replit\.dev$/,
-  /\.replit\.app$/,
-  /\.spock\.replit\.dev$/,
+const ALLOWED_HOSTNAME_SUFFIXES = [
+  ".myshopify.com",
+  ".shopify.com",
+  ".replit.dev",
+  ".replit.app",
+  ".spock.replit.dev",
 ];
+
+const ALLOWED_EXACT_HOSTNAMES = new Set(["localhost", "127.0.0.1"]);
+
+function isOriginAllowed(origin: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(origin).hostname;
+  } catch {
+    return false;
+  }
+  if (ALLOWED_EXACT_HOSTNAMES.has(hostname)) return true;
+  return ALLOWED_HOSTNAME_SUFFIXES.some((suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix));
+}
 
 app.use(
   cors({
@@ -25,8 +36,7 @@ app.use(
         callback(null, true);
         return;
       }
-      const allowed = ALLOWED_ORIGINS.some((pattern) => pattern.test(origin));
-      if (allowed) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`Origin ${origin} not allowed by CORS policy`));

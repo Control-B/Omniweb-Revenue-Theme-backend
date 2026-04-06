@@ -17,18 +17,17 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction): 
   const expectedKey = getWidgetApiKey();
 
   if (!expectedKey) {
-    res
-      .status(503)
-      .json({ error: "Service misconfigured", message: "WIDGET_API_KEY environment variable is not set." });
+    res.status(503).json({
+      error: "Service misconfigured",
+      message: "WIDGET_API_KEY environment variable is not set.",
+    });
     return;
   }
 
-  const provided =
-    (req.headers["x-widget-api-key"] as string | undefined) ??
-    (req.query["apiKey"] as string | undefined);
+  const provided = req.headers["x-widget-api-key"] as string | undefined;
 
   if (!provided || provided !== expectedKey) {
-    res.status(401).json({ error: "Unauthorized", message: "Valid API key required" });
+    res.status(401).json({ error: "Unauthorized", message: "Valid x-widget-api-key header required" });
     return;
   }
 
