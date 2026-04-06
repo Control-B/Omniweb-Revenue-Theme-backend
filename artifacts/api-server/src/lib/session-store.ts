@@ -1,5 +1,5 @@
 import { db, chatSessionsTable, type StoredMessage } from "@workspace/db";
-import { eq, and, desc, lt } from "drizzle-orm";
+import { eq, desc, lt, sql } from "drizzle-orm";
 
 export type Message = StoredMessage;
 
@@ -22,12 +22,10 @@ function tenantKey(shopId: string, sessionId: string): string {
 
 async function pruneExpiredSessions(): Promise<void> {
   const cutoff = new Date(Date.now() - SESSION_TTL_MS);
-  await db
-    .delete(chatSessionsTable)
-    .where(lt(chatSessionsTable.lastActiveAt, cutoff));
+  await db.delete(chatSessionsTable).where(lt(chatSessionsTable.lastActiveAt, cutoff));
 
   const allSessions = await db
-    .select({ sessionKey: chatSessionsTable.sessionKey, lastActiveAt: chatSessionsTable.lastActiveAt })
+    .select({ sessionKey: chatSessionsTable.sessionKey })
     .from(chatSessionsTable)
     .orderBy(desc(chatSessionsTable.lastActiveAt));
 
@@ -37,6 +35,27 @@ async function pruneExpiredSessions(): Promise<void> {
       await db.delete(chatSessionsTable).where(eq(chatSessionsTable.sessionKey, key));
     }
   }
+}
+
+async function trimMessagesIfNeeded(key: string): Promise<void> {
+  const rows = await db
+    .select({ messages: chatSessionsTable.messages, messageCount: chatSessionsTable.messageCount })
+    .from(chatSessionsTable)
+    .where(eq(chatSessionsTable.sessionKey, key))
+    .limit(1);
+
+  if (rows.length === 0) return;
+  const messages = (rows[0].messages as Message[]) ?? [];
+  if (messages.length <= MAX_MESSAGES) return;
+
+  const systemMessages = messages.filter((m) => m.role === "system");
+  const nonSystem = messages.filter((m) => m.role !== "system");
+  const trimmed = [...systemMessages, ...nonSystem.slice(-TRIM_TO)];
+
+  await db
+    .update(chatSessionsTable)
+    .set({ messages: trimmed })
+    .where(eq(chatSessionsTable.sessionKey, key));
 }
 
 export async function getOrCreateSession(sessionId: string, shopId: string): Promise<Session> {
@@ -112,39 +131,24 @@ export async function updateSystemMessage(sessionId: string, shopId: string, con
 
 export async function addMessageToSession(sessionId: string, shopId: string, message: Message): Promise<void> {
   const key = tenantKey(shopId, sessionId);
-  const rows = await db
-    .select()
-    .from(chatSessionsTable)
-    .where(eq(chatSessionsTable.sessionKey, key))
-    .limit(1);
+  const msgJson = JSON.stringify(message);
 
-  if (rows.length === 0) return;
-
-  const row = rows[0];
-  let messages = (row.messages as Message[]) ?? [];
-  messages.push(message);
-
-  const newCount = row.messageCount + 1;
-  let firstMessage = row.firstMessage;
-  if (!firstMessage && message.role === "user") {
-    firstMessage = message.content.slice(0, 200);
-  }
-
-  if (messages.length > MAX_MESSAGES) {
-    const systemMessages = messages.filter((m) => m.role === "system");
-    const nonSystem = messages.filter((m) => m.role !== "system");
-    messages = [...systemMessages, ...nonSystem.slice(-TRIM_TO)];
-  }
+  const firstMsgUpdate =
+    message.role === "user"
+      ? sql`CASE WHEN ${chatSessionsTable.firstMessage} = '' THEN ${message.content.slice(0, 200)} ELSE ${chatSessionsTable.firstMessage} END`
+      : chatSessionsTable.firstMessage;
 
   await db
     .update(chatSessionsTable)
     .set({
-      messages,
-      messageCount: newCount,
-      firstMessage,
+      messages: sql`${chatSessionsTable.messages} || ${msgJson}::jsonb`,
+      messageCount: sql`${chatSessionsTable.messageCount} + 1`,
+      firstMessage: firstMsgUpdate,
       lastActiveAt: new Date(),
     })
     .where(eq(chatSessionsTable.sessionKey, key));
+
+  await trimMessagesIfNeeded(key);
 }
 
 export async function getRecentSessions(
