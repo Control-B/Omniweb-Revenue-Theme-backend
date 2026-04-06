@@ -8,6 +8,7 @@ import { requireApiKey } from "./middleware/api-key.js";
 import { logger } from "./lib/logger.js";
 
 const app: Express = express();
+app.set("trust proxy", 1);
 
 /**
  * CORS strategy
