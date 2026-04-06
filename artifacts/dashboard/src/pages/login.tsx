@@ -25,7 +25,7 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      setLocation("/settings");
+      setLocation("/analytics");
     }
   }, [isAuthenticated, setLocation]);
 
