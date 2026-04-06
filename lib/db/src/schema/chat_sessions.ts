@@ -1,6 +1,8 @@
 import { pgTable, text, integer, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { widgetConfigsTable } from "./widget_configs";
 
+export type PageType = "product" | "collection" | "cart" | "search" | "other";
+
 export interface StoredMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -17,6 +19,7 @@ export const chatSessionsTable = pgTable(
     messages: jsonb("messages").notNull().$type<StoredMessage[]>().default([]),
     messageCount: integer("message_count").notNull().default(0),
     firstMessage: text("first_message").notNull().default(""),
+    pageType: text("page_type").notNull().default("other"),
     lastActiveAt: timestamp("last_active_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

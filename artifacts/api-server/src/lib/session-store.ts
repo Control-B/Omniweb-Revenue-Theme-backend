@@ -9,6 +9,7 @@ export interface Session {
   createdAt: Date;
   lastActiveAt: Date;
   messageCount: number;
+  pageType: string;
 }
 
 const MAX_SESSIONS = 1000;
@@ -58,6 +59,7 @@ export async function getOrCreateSession(sessionId: string, shopId: string): Pro
       messages: [],
       messageCount: 0,
       firstMessage: "",
+      pageType: "other",
       lastActiveAt: now,
       createdAt: now,
     })
@@ -79,7 +81,16 @@ export async function getOrCreateSession(sessionId: string, shopId: string): Pro
     createdAt: row.createdAt,
     lastActiveAt: row.lastActiveAt,
     messageCount: row.messageCount,
+    pageType: row.pageType,
   };
+}
+
+export async function updateSessionPageType(sessionId: string, shopId: string, pageType: string): Promise<void> {
+  const key = tenantKey(shopId, sessionId);
+  await db
+    .update(chatSessionsTable)
+    .set({ pageType })
+    .where(eq(chatSessionsTable.sessionKey, key));
 }
 
 export async function updateSystemMessage(sessionId: string, shopId: string, content: string): Promise<void> {
@@ -151,26 +162,41 @@ export async function addMessageToSession(sessionId: string, shopId: string, mes
 
 export async function getRecentSessions(
   shopId: string,
-  limit = 50
-): Promise<Array<{
-  sessionId: string;
-  messageCount: number;
-  firstMessage: string;
-  lastActiveAt: Date;
-  createdAt: Date;
-}>> {
+  limit = 50,
+  offset = 0
+): Promise<{
+  sessions: Array<{
+    sessionId: string;
+    messageCount: number;
+    firstMessage: string;
+    pageType: string;
+    lastActiveAt: Date;
+    createdAt: Date;
+  }>;
+  total: number;
+}> {
   const rows = await db
     .select()
     .from(chatSessionsTable)
     .where(eq(chatSessionsTable.shopId, shopId))
     .orderBy(desc(chatSessionsTable.lastActiveAt))
-    .limit(Math.min(limit, 100));
+    .limit(Math.min(limit, 100))
+    .offset(offset);
 
-  return rows.map((row) => ({
-    sessionId: row.sessionId,
-    messageCount: row.messageCount,
-    firstMessage: row.firstMessage,
-    lastActiveAt: row.lastActiveAt,
-    createdAt: row.createdAt,
-  }));
+  const totalRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chatSessionsTable)
+    .where(eq(chatSessionsTable.shopId, shopId));
+
+  return {
+    sessions: rows.map((row) => ({
+      sessionId: row.sessionId,
+      messageCount: row.messageCount,
+      firstMessage: row.firstMessage,
+      pageType: row.pageType,
+      lastActiveAt: row.lastActiveAt,
+      createdAt: row.createdAt,
+    })),
+    total: totalRows[0]?.count ?? 0,
+  };
 }

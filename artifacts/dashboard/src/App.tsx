@@ -11,6 +11,7 @@ import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import Settings from "@/pages/settings";
 import Conversations from "@/pages/conversations";
+import Analytics from "@/pages/analytics";
 import Install from "@/pages/install";
 import ApiKeys from "@/pages/api-keys";
 import Billing from "@/pages/billing";
@@ -45,6 +46,10 @@ function Router() {
     <Switch>
       <Route path="/" component={Login} />
       <Route path="/signup" component={Signup} />
+
+      <Route path="/analytics">
+        <ProtectedRoute component={Analytics} />
+      </Route>
       <Route path="/settings">
         <ProtectedRoute component={Settings} />
       </Route>

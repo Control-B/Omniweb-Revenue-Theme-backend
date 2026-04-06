@@ -22,6 +22,7 @@ export interface Session {
   sessionId: string;
   messageCount: number;
   firstMessage: string;
+  pageType: string;
   lastActiveAt: string;
   createdAt: string;
 }
@@ -52,6 +53,19 @@ export interface BillingStatus {
     percentage: number;
   };
   stripeConfigured: boolean;
+}
+
+export interface AnalyticsSummary {
+  messages: number;
+  sessions: number;
+  avgPerSession: number;
+  pageTypeBreakdown: Record<string, number>;
+}
+
+export interface DailyDataPoint {
+  date: string;
+  messageCount: number;
+  sessionCount: number;
 }
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
@@ -107,12 +121,12 @@ export function useVoices() {
   });
 }
 
-export function useConversations() {
+export function useConversations(limit = 50, offset = 0) {
   const { isAuthenticated, auth } = useAuth();
 
   return useQuery<{ sessions: Session[]; total: number }>({
-    queryKey: ["conversations", auth?.shopId],
-    queryFn: () => apiFetch("/api/conversations"),
+    queryKey: ["conversations", auth?.shopId, limit, offset],
+    queryFn: () => apiFetch(`/api/conversations?limit=${limit}&offset=${offset}`),
     enabled: isAuthenticated,
     refetchInterval: 30000,
   });
@@ -176,5 +190,27 @@ export function useCreatePortalSession() {
         window.location.href = data.url;
       }
     },
+  });
+}
+
+export function useAnalyticsSummary() {
+  const { isAuthenticated } = useAuth();
+
+  return useQuery<AnalyticsSummary>({
+    queryKey: ["analyticsSummary"],
+    queryFn: () => apiFetch("/api/analytics/summary"),
+    enabled: isAuthenticated,
+    refetchInterval: 60000,
+  });
+}
+
+export function useAnalyticsDaily() {
+  const { isAuthenticated } = useAuth();
+
+  return useQuery<{ days: DailyDataPoint[] }>({
+    queryKey: ["analyticsDaily"],
+    queryFn: () => apiFetch("/api/analytics/daily"),
+    enabled: isAuthenticated,
+    refetchInterval: 60000,
   });
 }

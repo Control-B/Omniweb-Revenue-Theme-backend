@@ -5,6 +5,7 @@ import voiceRouter from "./voice.js";
 import widgetConfigRouter from "./widget-config.js";
 import authRouter from "./auth.js";
 import billingRouter from "./billing.js";
+import analyticsRouter from "./analytics.js";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(billingRouter);
 router.use(chatRouter);
 router.use(voiceRouter);
 router.use(widgetConfigRouter);
+router.use(analyticsRouter);
 
 export default router;

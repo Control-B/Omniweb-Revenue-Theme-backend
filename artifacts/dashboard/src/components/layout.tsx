@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Settings, MessageSquare, Code, LayoutDashboard, Key, CreditCard } from "lucide-react";
+import { LogOut, Settings, MessageSquare, Code, LayoutDashboard, Key, CreditCard, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -11,8 +11,9 @@ export function Layout({ children }: { children: ReactNode }) {
   if (!credentials) return <>{children}</>;
 
   const navItems = [
-    { href: "/settings", label: "Settings", icon: Settings },
+    { href: "/analytics", label: "Analytics", icon: BarChart2 },
     { href: "/conversations", label: "Conversations", icon: MessageSquare },
+    { href: "/settings", label: "Settings", icon: Settings },
     { href: "/install", label: "Install", icon: Code },
     { href: "/api-keys", label: "API Keys", icon: Key },
     { href: "/billing", label: "Billing", icon: CreditCard },

@@ -4,10 +4,12 @@ import {
   getOrCreateSession,
   addMessageToSession,
   updateSystemMessage,
+  updateSessionPageType,
   type Message,
 } from "../lib/session-store.js";
 import { getWidgetConfig, isShopRegistered } from "../lib/widget-config-store.js";
 import { incrementUsage } from "../lib/plan-limits.js";
+import { upsertDailyStats } from "../lib/analytics-store.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -19,6 +21,12 @@ function getOpenAIClient(): OpenAI | null {
     return null;
   }
   return new OpenAI({ baseURL, apiKey });
+}
+
+function normalizePageType(raw: unknown): string {
+  const valid = ["product", "collection", "cart", "search"];
+  const s = typeof raw === "string" ? raw.toLowerCase() : "other";
+  return valid.includes(s) ? s : "other";
 }
 
 function formatPageContext(ctx: Record<string, unknown>): string {
@@ -164,6 +172,7 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
   }
 
   const shop = shopId.slice(0, 200);
+  const pageType = normalizePageType(pageContext?.pageType);
 
   try {
     const registered = await isShopRegistered(shop);
@@ -174,6 +183,9 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
 
     const config = await getWidgetConfig(shop);
     const session = await getOrCreateSession(sessionId, shop);
+    const isNewSession = session.messageCount === 0;
+
+    await updateSessionPageType(sessionId, shop, pageType);
 
     const systemContent = buildSystemPrompt(config.persona, pageContext || undefined);
 
@@ -208,9 +220,14 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
     const assistantMsg: Message = { role: "assistant", content: reply };
     await addMessageToSession(sessionId, shop, assistantMsg);
 
-    await incrementUsage(shop).catch((err) => {
-      logger.warn({ err }, "Failed to increment usage counter — non-fatal");
-    });
+    await Promise.all([
+      incrementUsage(shop).catch((err) => {
+        logger.warn({ err }, "Failed to increment usage counter — non-fatal");
+      }),
+      upsertDailyStats(shop, isNewSession).catch((err) => {
+        logger.warn({ err }, "Failed to upsert daily stats — non-fatal");
+      }),
+    ]);
 
     const finalSession = await getOrCreateSession(sessionId, shop);
     res.json({

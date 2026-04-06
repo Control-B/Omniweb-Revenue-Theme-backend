@@ -5,7 +5,7 @@ import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import router from "./routes/index.js";
 import widgetFileRouter from "./routes/widget.js";
-import { requireAuth } from "./middleware/api-key.js";
+import { requireAuth, requireSessionAuth } from "./middleware/api-key.js";
 import { requirePlanLimits } from "./middleware/plan-limits.js";
 import { logger } from "./lib/logger.js";
 
@@ -117,6 +117,7 @@ app.use("/api/voices", requireAuth);
 app.use("/api/voices-status", requireAuth);
 app.use("/api/widget-config", requireAuth);
 app.use("/api/conversations", requireAuth);
+app.use("/api/analytics", requireSessionAuth);
 // Billing routes use requireSessionAuth within the router itself
 
 app.use("/api", router);

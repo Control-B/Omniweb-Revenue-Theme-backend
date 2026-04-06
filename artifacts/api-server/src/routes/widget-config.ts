@@ -83,8 +83,9 @@ router.get(
     const shopId = req.merchant!.shopId;
     try {
       const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
-      const sessions = await getRecentSessions(shopId, limit);
-      res.json({ sessions, total: sessions.length });
+      const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+      const result = await getRecentSessions(shopId, limit, offset);
+      res.json(result);
     } catch {
       res.status(500).json({ error: "Failed to fetch conversations" });
     }
