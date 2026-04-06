@@ -36,6 +36,21 @@ export interface MerchantInfo {
   createdAt: string;
 }
 
+export interface BillingStatus {
+  plan: string;
+  planName: string;
+  subscriptionStatus: string;
+  currentPeriodEnd: string | null;
+  hasCustomer: boolean;
+  usage: {
+    used: number;
+    limit: number;
+    remaining: number;
+    percentage: number;
+  };
+  stripeConfigured: boolean;
+}
+
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   const response = await fetch(url, {
     ...options,
@@ -118,6 +133,45 @@ export function useRotateApiKey() {
       apiFetch("/api/auth/rotate-key", { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["merchantInfo"] });
+    },
+  });
+}
+
+export function useBillingStatus() {
+  const { isAuthenticated } = useAuth();
+
+  return useQuery<BillingStatus>({
+    queryKey: ["billingStatus"],
+    queryFn: () => apiFetch("/api/billing/status"),
+    enabled: isAuthenticated,
+  });
+}
+
+export function useCreateCheckoutSession() {
+  return useMutation({
+    mutationFn: (plan: string) =>
+      apiFetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        body: JSON.stringify({ plan }),
+      }) as Promise<{ url: string }>,
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+  });
+}
+
+export function useCreatePortalSession() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch("/api/billing/create-portal-session", {
+        method: "POST",
+      }) as Promise<{ url: string }>,
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
     },
   });
 }

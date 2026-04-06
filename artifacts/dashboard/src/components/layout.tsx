@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Settings, MessageSquare, Code, LayoutDashboard, Key } from "lucide-react";
+import { LogOut, Settings, MessageSquare, Code, LayoutDashboard, Key, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -15,6 +15,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/conversations", label: "Conversations", icon: MessageSquare },
     { href: "/install", label: "Install", icon: Code },
     { href: "/api-keys", label: "API Keys", icon: Key },
+    { href: "/billing", label: "Billing", icon: CreditCard },
   ];
 
   return (

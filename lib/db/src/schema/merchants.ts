@@ -1,6 +1,14 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, integer } from "drizzle-orm/pg-core";
 
 export const planEnum = pgEnum("plan", ["free", "starter", "pro"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "none",
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "incomplete",
+]);
 
 export const merchantsTable = pgTable("merchants", {
   id: text("id").primaryKey(),
@@ -11,6 +19,15 @@ export const merchantsTable = pgTable("merchants", {
   apiKeyPrefix: text("api_key_prefix"),
   apiKeyCreatedAt: timestamp("api_key_created_at"),
   plan: planEnum("plan").notNull().default("free"),
+
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: subscriptionStatusEnum("subscription_status").notNull().default("none"),
+  currentPeriodEnd: timestamp("current_period_end"),
+
+  monthlyMessageCount: integer("monthly_message_count").notNull().default(0),
+  usagePeriodStart: timestamp("usage_period_start"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

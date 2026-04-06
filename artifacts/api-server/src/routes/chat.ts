@@ -7,6 +7,7 @@ import {
   type Message,
 } from "../lib/session-store.js";
 import { getWidgetConfig, isShopRegistered } from "../lib/widget-config-store.js";
+import { incrementUsage } from "../lib/plan-limits.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -206,6 +207,10 @@ router.post("/chat", async (req: Request, res: Response): Promise<void> => {
       completion.choices[0]?.message?.content ?? "Sorry, I couldn't generate a reply.";
     const assistantMsg: Message = { role: "assistant", content: reply };
     await addMessageToSession(sessionId, shop, assistantMsg);
+
+    await incrementUsage(shop).catch((err) => {
+      logger.warn({ err }, "Failed to increment usage counter — non-fatal");
+    });
 
     const finalSession = await getOrCreateSession(sessionId, shop);
     res.json({

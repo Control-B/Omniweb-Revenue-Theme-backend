@@ -13,6 +13,8 @@ import Settings from "@/pages/settings";
 import Conversations from "@/pages/conversations";
 import Install from "@/pages/install";
 import ApiKeys from "@/pages/api-keys";
+import Billing from "@/pages/billing";
+import Pricing from "@/pages/pricing";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +57,10 @@ function Router() {
       <Route path="/api-keys">
         <ProtectedRoute component={ApiKeys} />
       </Route>
+      <Route path="/billing">
+        <ProtectedRoute component={Billing} />
+      </Route>
+      <Route path="/pricing" component={Pricing} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import router from "./routes/index.js";
 import widgetFileRouter from "./routes/widget.js";
 import { requireAuth } from "./middleware/api-key.js";
+import { requirePlanLimits } from "./middleware/plan-limits.js";
 import { logger } from "./lib/logger.js";
 
 const app: Express = express();
@@ -49,6 +50,14 @@ app.use(
 );
 
 app.use(cookieParser());
+
+/* Stripe webhooks need the raw body for signature verification.
+ * Mount BEFORE the global JSON parser. */
+app.use(
+  "/api/billing/webhook",
+  express.raw({ type: "application/json" }),
+);
+
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
@@ -97,7 +106,7 @@ app.use(widgetFileRouter);
 app.use(globalLimiter);
 
 /* Public widget endpoints — rate limited, no auth required */
-app.use("/api/chat", chatLimiter);
+app.use("/api/chat", chatLimiter, requirePlanLimits);
 app.use("/api/voice", voiceLimiter);
 
 /* Auth endpoints — rate limited, no auth required */
@@ -108,6 +117,9 @@ app.use("/api/voices", requireAuth);
 app.use("/api/voices-status", requireAuth);
 app.use("/api/widget-config", requireAuth);
 app.use("/api/conversations", requireAuth);
+app.use("/api/billing/create-checkout-session", requireAuth);
+app.use("/api/billing/create-portal-session", requireAuth);
+app.use("/api/billing/status", requireAuth);
 
 app.use("/api", router);
 
